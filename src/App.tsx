@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 import { useState, type ChangeEvent } from 'react'
 
 import { SectionCard } from './components/SectionCard'
@@ -207,6 +208,7 @@ function App() {
   >([])
   const [translationResults, setTranslationResults] = useState<TranslatedEntryResult[]>([])
   const [includeBomOnDownload, setIncludeBomOnDownload] = useState(true)
+  const [showOllamaInfo, setShowOllamaInfo] = useState(false)
   const totalBytes = uploadedFiles.reduce((sum, file) => sum + file.size, 0)
   const bomCount = uploadedFiles.filter((file) => file.hadBom).length
   const normalizedBatchSize = Number.isFinite(batchSize) ? batchSize : 80
@@ -347,11 +349,7 @@ function App() {
     }
   }
 
-  function downloadTextFile(fileName: string, text: string) {
-    const outputText = includeBomOnDownload ? `\ufeff${text}` : text
-    const blob = new Blob([outputText], {
-      type: 'text/yaml;charset=utf-8',
-    })
+  function downloadBlob(fileName: string, blob: Blob) {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
 
@@ -361,14 +359,44 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  function handleDownloadFiles() {
+  function createDownloadText(text: string) {
+    return includeBomOnDownload ? `\ufeff${text}` : text
+  }
+
+  async function handleDownloadFiles() {
     const translationResultMap = createTranslationResultMap(translationResults)
+    const rebuiltFiles = parsedFiles.map((parsedFile) => ({
+      name: parsedFile.file.name,
+      text: rebuildParadoxYml(parsedFile.parsedLines, translationResultMap).text,
+    }))
 
-    for (const parsedFile of parsedFiles) {
-      const rebuilt = rebuildParadoxYml(parsedFile.parsedLines, translationResultMap)
-
-      downloadTextFile(parsedFile.file.name, rebuilt.text)
+    if (rebuiltFiles.length === 0) {
+      return
     }
+
+    if (rebuiltFiles.length === 1) {
+      downloadBlob(
+        rebuiltFiles[0].name,
+        new Blob([createDownloadText(rebuiltFiles[0].text)], {
+          type: 'text/yaml;charset=utf-8',
+        }),
+      )
+      return
+    }
+
+    const zip = new JSZip()
+
+    for (const file of rebuiltFiles) {
+      zip.file(file.name, createDownloadText(file.text))
+    }
+
+    downloadBlob(
+      'pdx-translator-results.zip',
+      await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+      }),
+    )
   }
 
   return (
@@ -381,6 +409,13 @@ function App() {
             <p className="mt-1 text-sm text-slate-600">{t.appSubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowOllamaInfo((current) => !current)}
+              className="border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-[#476a5f] hover:text-slate-950"
+            >
+              {showOllamaInfo ? 'Back' : 'Info'}
+            </button>
             <span className="text-xs font-semibold uppercase text-slate-500">{t.interface}</span>
             <div className="grid grid-cols-2 border border-slate-300 bg-slate-100 p-1">
               <button
@@ -407,6 +442,101 @@ function App() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-5">
+        {showOllamaInfo ? (
+          <section className="border border-slate-300 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h2 className="text-lg font-semibold text-slate-950">
+                {uiLanguage === 'ko' ? 'Ollama + Gemma4 설정' : 'Ollama + Gemma4 Setup'}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                {uiLanguage === 'ko'
+                  ? '로컬 PC에서 Ollama를 실행하고 브라우저 앱이 접근할 수 있게 설정합니다.'
+                  : 'Run Ollama locally and allow this browser app to access it.'}
+              </p>
+            </div>
+            <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.7fr)]">
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase text-[#476a5f]">
+                    {uiLanguage === 'ko' ? '1. Ollama 설치' : '1. Install Ollama'}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {uiLanguage === 'ko'
+                      ? 'Ollama 공식 사이트에서 Windows용 Ollama를 설치합니다.'
+                      : 'Install Ollama for Windows from the official Ollama site.'}
+                  </p>
+                  <a
+                    href="https://ollama.com/download"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:border-[#476a5f]"
+                  >
+                    https://ollama.com/download
+                  </a>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold uppercase text-[#476a5f]">
+                    {uiLanguage === 'ko' ? '2. Gemma4 모델 받기' : '2. Pull Gemma4'}
+                  </h3>
+                  <pre className="mt-2 overflow-auto bg-slate-950 p-3 text-sm text-slate-50">
+                    <code>ollama pull gemma4:e4b</code>
+                  </pre>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold uppercase text-[#476a5f]">
+                    {uiLanguage === 'ko' ? '3. GitHub Pages Origin 허용' : '3. Allow GitHub Pages Origin'}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {uiLanguage === 'ko'
+                      ? 'GitHub Pages에서 실행되는 브라우저 앱이 로컬 Ollama에 접근하려면 origin 허용이 필요합니다.'
+                      : 'The browser app served from GitHub Pages needs an allowed origin to call local Ollama.'}
+                  </p>
+                  <pre className="mt-2 overflow-auto bg-slate-950 p-3 text-sm text-slate-50">
+                    <code>OLLAMA_ORIGINS=https://dltpsk03.github.io ollama serve</code>
+                  </pre>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold uppercase text-[#476a5f]">
+                    {uiLanguage === 'ko' ? '4. 앱에서 확인' : '4. Check in the App'}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {uiLanguage === 'ko'
+                      ? '앱으로 돌아가 Ollama 연결 확인을 누르고, 모델이 gemma4:e4b인지 확인합니다.'
+                      : 'Return to the app, press Check Connection, and confirm the selected model is gemma4:e4b.'}
+                  </p>
+                </div>
+              </div>
+
+              <aside className="border border-slate-300 bg-slate-50 p-4">
+                <h3 className="text-sm font-semibold uppercase text-slate-500">
+                  {uiLanguage === 'ko' ? '현재 앱 기본값' : 'Current App Defaults'}
+                </h3>
+                <dl className="mt-3 space-y-3 text-sm">
+                  <div>
+                    <dt className="font-semibold text-slate-500">Endpoint</dt>
+                    <dd className="mt-1 text-slate-950">{DEFAULT_OLLAMA_ENDPOINT}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-slate-500">Model</dt>
+                    <dd className="mt-1 text-slate-950">gemma4:e4b</dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-slate-500">Thinking</dt>
+                    <dd className="mt-1 text-slate-950">think: false</dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-slate-500">Batch</dt>
+                    <dd className="mt-1 text-slate-950">80 lines, concurrency 2</dd>
+                  </div>
+                </dl>
+              </aside>
+            </div>
+          </section>
+        ) : (
+          <>
         <section className="mb-5 grid grid-cols-2 gap-4 border border-slate-300 bg-white p-4 lg:grid-cols-4">
           <Metric label={t.files} value={uploadedFiles.length} />
           <Metric label={t.entries} value={localizationEntries.length} />
@@ -699,6 +829,8 @@ function App() {
             </SectionCard>
           </div>
         </section>
+          </>
+        )}
       </div>
     </main>
   )
