@@ -1,0 +1,139 @@
+import type { TranslationBatch } from './createBatches'
+import { parseParadoxYml } from './parseParadoxYml'
+
+export type ValidationErrorCode =
+  | 'line_count_mismatch'
+  | 'missing_line'
+  | 'unexpected_line'
+  | 'unparseable_line'
+  | 'key_mismatch'
+  | 'version_mismatch'
+  | 'placeholder_missing'
+  | 'escaped_newline_missing'
+
+export type ValidationError = {
+  code: ValidationErrorCode
+  batchIndex: number
+  lineIndex?: number
+  globalIndex?: number
+  resultLineIndex?: number
+  message: string
+}
+
+export type ValidateTranslatedBatchResult = {
+  ok: boolean
+  errors: ValidationError[]
+}
+
+function createEntryError(
+  batch: TranslationBatch,
+  entryIndex: number,
+  code: ValidationErrorCode,
+  message: string,
+): ValidationError {
+  const batchEntry = batch.entries[entryIndex]
+
+  return {
+    code,
+    batchIndex: batch.batchIndex,
+    lineIndex: batchEntry?.lineIndex,
+    globalIndex: batchEntry?.globalIndex,
+    resultLineIndex: entryIndex,
+    message,
+  }
+}
+
+export function validateTranslatedBatch(
+  batch: TranslationBatch,
+  translatedText: string,
+): ValidateTranslatedBatchResult {
+  const errors: ValidationError[] = []
+  const parsedLines = parseParadoxYml(translatedText, {
+    fileName: `translated-batch-${batch.batchIndex}`,
+  })
+
+  if (parsedLines.length !== batch.entries.length) {
+    errors.push({
+      code: 'line_count_mismatch',
+      batchIndex: batch.batchIndex,
+      message: `Expected ${batch.entries.length} translated lines but received ${parsedLines.length}.`,
+    })
+  }
+
+  const comparableLineCount = Math.min(parsedLines.length, batch.entries.length)
+
+  for (let index = 0; index < comparableLineCount; index += 1) {
+    const originalEntry = batch.entries[index].entry
+    const translatedLine = parsedLines[index]
+
+    if (translatedLine.type !== 'entry') {
+      errors.push(
+        createEntryError(
+          batch,
+          index,
+          'unparseable_line',
+          `Line ${index + 1} is not a valid quoted localization entry.`,
+        ),
+      )
+      continue
+    }
+
+    if (translatedLine.key !== originalEntry.key) {
+      errors.push(
+        createEntryError(
+          batch,
+          index,
+          'key_mismatch',
+          `Line ${index + 1} key changed from "${originalEntry.key}" to "${translatedLine.key}".`,
+        ),
+      )
+    }
+
+    if (translatedLine.version !== originalEntry.version) {
+      errors.push(
+        createEntryError(
+          batch,
+          index,
+          'version_mismatch',
+          `Line ${index + 1} version changed from "${originalEntry.version}" to "${translatedLine.version}".`,
+        ),
+      )
+    }
+
+    for (const placeholder of batch.entries[index].placeholders) {
+      if (!translatedLine.value.includes(placeholder.token)) {
+        const code =
+          placeholder.value === '\\n' ? 'escaped_newline_missing' : 'placeholder_missing'
+
+        errors.push(
+          createEntryError(
+            batch,
+            index,
+            code,
+            `Line ${index + 1} is missing placeholder ${placeholder.token} (${placeholder.value}).`,
+          ),
+        )
+      }
+    }
+  }
+
+  for (let index = comparableLineCount; index < batch.entries.length; index += 1) {
+    errors.push(
+      createEntryError(batch, index, 'missing_line', `Line ${index + 1} is missing from the result.`),
+    )
+  }
+
+  for (let index = comparableLineCount; index < parsedLines.length; index += 1) {
+    errors.push({
+      code: 'unexpected_line',
+      batchIndex: batch.batchIndex,
+      resultLineIndex: index,
+      message: `Line ${index + 1} is unexpected in the result.`,
+    })
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+  }
+}
