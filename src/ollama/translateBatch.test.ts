@@ -18,11 +18,11 @@ describe('translateBatch', () => {
   it('posts a batch prompt to Ollama generate with default settings', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ response: ' key:0 "값"' }),
+      json: async () => ({ response: ' key:0 "Translated"' }),
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(translateBatch(batch())).resolves.toBe(' key:0 "값"')
+    await expect(translateBatch(batch())).resolves.toBe(' key:0 "Translated"')
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:11434/api/generate',
@@ -40,6 +40,7 @@ describe('translateBatch', () => {
     expect(body).toMatchObject({
       model: DEFAULT_TRANSLATION_MODEL,
       stream: false,
+      think: false,
       keep_alive: '30m',
       options: {
         temperature: 0.1,
@@ -53,7 +54,7 @@ describe('translateBatch', () => {
   it('supports custom endpoint, model, keepAlive, and generation options', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ response: ' key:0 "번역"' }),
+      json: async () => ({ response: ' key:0 "Custom translated"' }),
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -72,6 +73,7 @@ describe('translateBatch', () => {
     expect(url).toBe('http://localhost:11435/api/generate')
     expect(body).toMatchObject({
       model: 'qwen2.5:7b',
+      think: false,
       keep_alive: '10m',
       options: {
         temperature: 0.2,

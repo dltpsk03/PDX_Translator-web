@@ -41,14 +41,15 @@ describe('buildPrompt', () => {
     const prompt = buildPrompt(batch(' tooltip:0 "<P0> gains <P1>\\n#P Good #!"'))
 
     expect(prompt).toContain(
-      'Keep placeholders such as <P0>, <P1>, [...], $...$, £...£, #P ... #!, and #N ... #! unchanged.',
+      'Keep placeholders such as <P0>, <P1>, bracket placeholders, dollar placeholders, icon placeholders, #P ... #!, and #N ... #! unchanged.',
     )
     expect(prompt).toContain('Keep escaped newline markers \\n unchanged.')
   })
 
-  it('forbids explanations and markdown and asks for localization lines only', () => {
+  it('forbids reasoning, explanations, and markdown and asks for localization lines only', () => {
     const prompt = buildPrompt(batch(' key:0 "Value"'))
 
+    expect(prompt).toContain('Do not use thinking, reasoning, or analysis output.')
     expect(prompt).toContain('Do not add explanations.')
     expect(prompt).toContain('Do not use markdown.')
     expect(prompt).toContain('Return only translated localization lines.')

@@ -43,6 +43,7 @@ export async function translateBatch(
       model,
       prompt: buildPrompt(batch),
       stream: false,
+      think: false,
       keep_alive: keepAlive,
       options: {
         temperature,
