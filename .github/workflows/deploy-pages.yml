@@ -42,6 +42,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
+        env:
+          VITE_BASE_PATH: /PDX_Translator-web/
         run: pnpm build
 
       - name: Setup Pages
