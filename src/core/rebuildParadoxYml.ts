@@ -1,9 +1,18 @@
 import type { TranslatedEntryResult } from './runTranslation'
+import {
+  isLanguageHeader,
+  replaceLanguageHeader,
+  type ParadoxLanguageCode,
+} from './paradoxLanguages'
 import type { ParsedLine } from '../types/paradox'
 
 export type RebuildParadoxYmlResult = {
   text: string
   failedEntries: TranslatedEntryResult[]
+}
+
+export type RebuildParadoxYmlOptions = {
+  targetLanguage?: ParadoxLanguageCode
 }
 
 export function createTranslationResultMap(results: TranslatedEntryResult[]) {
@@ -13,12 +22,20 @@ export function createTranslationResultMap(results: TranslatedEntryResult[]) {
 export function rebuildParadoxYml(
   parsedLines: ParsedLine[],
   translatedResultMap: Map<number, TranslatedEntryResult>,
+  { targetLanguage }: RebuildParadoxYmlOptions = {},
 ): RebuildParadoxYmlResult {
   const failedEntries: TranslatedEntryResult[] = []
+  let replacedLanguageHeader = false
   const rebuiltLines = parsedLines
     .toSorted((a, b) => a.lineIndex - b.lineIndex)
     .map((line) => {
       if (line.type === 'raw') {
+        if (targetLanguage && !replacedLanguageHeader && isLanguageHeader(line.rawLine)) {
+          replacedLanguageHeader = true
+
+          return replaceLanguageHeader(line.rawLine, targetLanguage)
+        }
+
         return line.rawLine
       }
 

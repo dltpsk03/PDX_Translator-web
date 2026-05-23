@@ -22,12 +22,23 @@ describe('buildPrompt', () => {
     expect(prompt).toContain(promptText)
   })
 
-  it('instructs the model to translate only quoted text into Korean', () => {
+  it('instructs the model to translate only quoted text into Korean by default', () => {
     const prompt = buildPrompt(batch(' key:0 "Value"'))
 
-    expect(prompt).toContain('Translate only the quoted text into Korean.')
+    expect(prompt).toContain('from English into Korean')
+    expect(prompt).toContain('Translate only the quoted text from English into Korean.')
     expect(prompt).toContain('Keep every localization key unchanged.')
     expect(prompt).toContain('Keep version markers such as :0 unchanged.')
+  })
+
+  it('uses the selected source and target languages', () => {
+    const prompt = buildPrompt(batch(' key:0 "Value"'), {
+      sourceLanguage: 'l_french',
+      targetLanguage: 'l_japanese',
+    })
+
+    expect(prompt).toContain('from French into Japanese')
+    expect(prompt).toContain('Translate only the quoted text from French into Japanese.')
   })
 
   it('requires preserving line count and order', () => {

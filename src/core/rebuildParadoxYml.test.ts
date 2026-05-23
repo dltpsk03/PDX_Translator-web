@@ -70,6 +70,18 @@ describe('rebuildParadoxYml', () => {
     expect(result.failedEntries).toEqual([])
   })
 
+  it('replaces the first language header even after comments', () => {
+    const parsed = parseParadoxYml(['# comment', '', 'l_english:', ' title:0 "Title"'].join('\n'), {
+      fileName: 'test.yml',
+    })
+
+    const result = rebuildParadoxYml(parsed, new Map(), {
+      targetLanguage: 'l_korean',
+    })
+
+    expect(result.text).toBe(['# comment', '', 'l_korean:', ' title:0 "Title"'].join('\n'))
+  })
+
   it('uses lineIndex order when the parsed line array is not ordered', () => {
     const parsed = parseParadoxYml([' title:0 "Title"', ' desc:0 "Desc"'].join('\n'), {
       fileName: 'test.yml',

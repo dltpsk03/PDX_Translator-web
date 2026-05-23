@@ -1,0 +1,91 @@
+import { buildPrompt } from '../ollama/buildPrompt'
+import type { TranslationProvider } from './types'
+
+type OpenAIResponse = {
+  output_text?: string
+  output?: Array<{
+    content?: Array<{
+      text?: string
+      type?: string
+    }>
+  }>
+  error?: {
+    message?: string
+  }
+}
+
+function extractOpenAIText(data: OpenAIResponse) {
+  if (data.output_text?.trim()) {
+    return data.output_text.trim()
+  }
+
+  const text = data.output
+    ?.flatMap((item) => item.content ?? [])
+    .map((content) => content.text ?? '')
+    .join('')
+    .trim()
+
+  if (!text) {
+    throw new Error(data.error?.message ?? 'OpenAI response did not include translated text.')
+  }
+
+  return text
+}
+
+async function createOpenAIResponse(prompt: string, settings: Parameters<TranslationProvider['translateBatch']>[1]) {
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${settings.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      input: prompt,
+      temperature: settings.temperature,
+      top_p: settings.topP,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`OpenAI returned HTTP ${response.status}.`)
+  }
+
+  return extractOpenAIText((await response.json()) as OpenAIResponse)
+}
+
+export const openaiProvider: TranslationProvider = {
+  id: 'openai',
+  label: 'OpenAI GPT',
+  defaultModel: 'gpt-5.1',
+  requiresApiKey: true,
+  async checkConnection(settings) {
+    if (!settings.apiKey.trim()) {
+      return { ok: false, label: 'OpenAI GPT', error: 'API key is required.' }
+    }
+
+    try {
+      await createOpenAIResponse('Return OK only.', {
+        ...settings,
+        temperature: 0,
+      })
+
+      return { ok: true, label: 'OpenAI GPT', detail: 'Test request completed.' }
+    } catch (error) {
+      return {
+        ok: false,
+        label: 'OpenAI GPT',
+        error: error instanceof Error ? error.message : 'Unable to call OpenAI API.',
+      }
+    }
+  },
+  translateBatch(batch, settings) {
+    return createOpenAIResponse(
+      buildPrompt(batch, {
+        sourceLanguage: settings.sourceLanguage,
+        targetLanguage: settings.targetLanguage,
+      }),
+      settings,
+    )
+  },
+}

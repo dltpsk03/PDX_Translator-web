@@ -1,6 +1,7 @@
 export type UploadedTextFile = {
   id: string
   name: string
+  relativePath: string
   size: number
   lastModified: number
   mimeType: string

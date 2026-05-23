@@ -1,4 +1,5 @@
 import type { TranslationBatch } from '../core/createBatches'
+import type { ParadoxLanguageCode } from '../core/paradoxLanguages'
 import { buildPrompt } from './buildPrompt'
 import { DEFAULT_OLLAMA_ENDPOINT } from './checkOllama'
 
@@ -11,6 +12,8 @@ export type TranslateBatchOptions = {
   temperature?: number
   topP?: number
   repeatPenalty?: number
+  sourceLanguage?: ParadoxLanguageCode
+  targetLanguage?: ParadoxLanguageCode
 }
 
 type OllamaGenerateResponse = {
@@ -30,6 +33,8 @@ export async function translateBatch(
     temperature = 0.1,
     topP = 0.9,
     repeatPenalty = 1.05,
+    sourceLanguage = 'l_english',
+    targetLanguage = 'l_korean',
   }: TranslateBatchOptions = {},
 ) {
   const normalizedEndpoint = normalizeEndpoint(endpoint)
@@ -41,7 +46,7 @@ export async function translateBatch(
     },
     body: JSON.stringify({
       model,
-      prompt: buildPrompt(batch),
+      prompt: buildPrompt(batch, { sourceLanguage, targetLanguage }),
       stream: false,
       think: false,
       keep_alive: keepAlive,

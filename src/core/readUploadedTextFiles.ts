@@ -18,17 +18,25 @@ function hasUtf8Bom(bytes: Uint8Array) {
 }
 
 function createFileId(file: File) {
-  return `${file.name}-${file.size}-${file.lastModified}`
+  const relativePath = getFileRelativePath(file)
+
+  return `${relativePath}-${file.size}-${file.lastModified}`
+}
+
+function getFileRelativePath(file: File) {
+  return file.webkitRelativePath || file.name
 }
 
 export async function readUploadedTextFile(file: File): Promise<UploadedTextFile> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const hadBom = hasUtf8Bom(bytes)
   const decodedText = new TextDecoder('utf-8').decode(bytes)
+  const relativePath = getFileRelativePath(file)
 
   return {
     id: createFileId(file),
     name: file.name,
+    relativePath,
     size: file.size,
     lastModified: file.lastModified,
     mimeType: file.type,

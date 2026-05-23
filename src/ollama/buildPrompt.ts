@@ -1,11 +1,29 @@
 import type { TranslationBatch } from '../core/createBatches'
+import {
+  getParadoxLanguageName,
+  type ParadoxLanguageCode,
+} from '../core/paradoxLanguages'
 
-export function buildPrompt(batch: TranslationBatch) {
+export type BuildPromptOptions = {
+  sourceLanguage?: ParadoxLanguageCode
+  targetLanguage?: ParadoxLanguageCode
+}
+
+export function buildPrompt(
+  batch: TranslationBatch,
+  {
+    sourceLanguage = 'l_english',
+    targetLanguage = 'l_korean',
+  }: BuildPromptOptions = {},
+) {
+  const sourceLanguageName = getParadoxLanguageName(sourceLanguage)
+  const targetLanguageName = getParadoxLanguageName(targetLanguage)
+
   return [
-    'You are translating Paradox Interactive localization lines into Korean.',
+    `You are translating Paradox Interactive localization lines from ${sourceLanguageName} into ${targetLanguageName}.`,
     '',
     'Rules:',
-    '- Translate only the quoted text into Korean.',
+    `- Translate only the quoted text from ${sourceLanguageName} into ${targetLanguageName}.`,
     '- Keep every localization key unchanged.',
     '- Keep version markers such as :0 unchanged.',
     '- Keep the exact same number of lines.',
