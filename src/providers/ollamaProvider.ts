@@ -35,6 +35,8 @@ export const ollamaProvider: TranslationProvider = {
       repeatPenalty: settings.repeatPenalty,
       sourceLanguage: settings.sourceLanguage,
       targetLanguage: settings.targetLanguage,
+      customInstructions: settings.customInstructions,
+      glossaryEntries: settings.glossaryEntries,
     })
   },
 }

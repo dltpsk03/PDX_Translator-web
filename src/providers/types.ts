@@ -1,5 +1,6 @@
 import type { TranslationBatch } from '../core/createBatches'
 import type { ParadoxLanguageCode } from '../core/paradoxLanguages'
+import type { GlossaryEntry } from '../prompt/parseGlossary'
 
 export type ProviderId = 'ollama' | 'gemini' | 'vertex-gemini' | 'openai' | 'claude'
 
@@ -16,6 +17,8 @@ export type ProviderSettings = {
   keepAlive: string
   sourceLanguage: ParadoxLanguageCode
   targetLanguage: ParadoxLanguageCode
+  customInstructions: string
+  glossaryEntries: GlossaryEntry[]
 }
 
 export type ProviderCheckResult =

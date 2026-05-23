@@ -94,6 +94,8 @@ export const geminiProvider: TranslationProvider = {
                   text: buildPrompt(batch, {
                     sourceLanguage: settings.sourceLanguage,
                     targetLanguage: settings.targetLanguage,
+                    customInstructions: settings.customInstructions,
+                    glossaryEntries: settings.glossaryEntries,
                   }),
                 },
               ],

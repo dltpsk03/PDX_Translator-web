@@ -3,10 +3,13 @@ import {
   getParadoxLanguageName,
   type ParadoxLanguageCode,
 } from '../core/paradoxLanguages'
+import type { GlossaryEntry } from '../prompt/parseGlossary'
 
 export type BuildPromptOptions = {
   sourceLanguage?: ParadoxLanguageCode
   targetLanguage?: ParadoxLanguageCode
+  customInstructions?: string
+  glossaryEntries?: GlossaryEntry[]
 }
 
 export function buildPrompt(
@@ -14,15 +17,17 @@ export function buildPrompt(
   {
     sourceLanguage = 'l_english',
     targetLanguage = 'l_korean',
+    customInstructions = '',
+    glossaryEntries = [],
   }: BuildPromptOptions = {},
 ) {
   const sourceLanguageName = getParadoxLanguageName(sourceLanguage)
   const targetLanguageName = getParadoxLanguageName(targetLanguage)
-
-  return [
+  const trimmedCustomInstructions = customInstructions.trim()
+  const promptSections = [
     `You are translating Paradox Interactive localization lines from ${sourceLanguageName} into ${targetLanguageName}.`,
     '',
-    'Rules:',
+    'Core rules:',
     `- Translate only the quoted text from ${sourceLanguageName} into ${targetLanguageName}.`,
     '- Keep every localization key unchanged.',
     '- Keep version markers such as :0 unchanged.',
@@ -34,8 +39,32 @@ export function buildPrompt(
     '- Do not add explanations.',
     '- Do not use markdown.',
     '- Return only translated localization lines.',
+  ]
+
+  if (glossaryEntries.length > 0) {
+    promptSections.push(
+      '',
+      'Glossary:',
+      'Apply these translations when the source term appears in quoted text, unless doing so would conflict with the core rules.',
+      'Do not alter placeholders, keys, version markers, or line structure to satisfy glossary terms.',
+      ...glossaryEntries.map((entry) => `- ${entry.source} => ${entry.target}`),
+    )
+  }
+
+  if (trimmedCustomInstructions) {
+    promptSections.push(
+      '',
+      'User style instructions:',
+      'Apply these instructions only if they do not conflict with the core rules.',
+      trimmedCustomInstructions,
+    )
+  }
+
+  promptSections.push(
     '',
     'Localization lines:',
     batch.promptText,
-  ].join('\n')
+  )
+
+  return promptSections.join('\n')
 }

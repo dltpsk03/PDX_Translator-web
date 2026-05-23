@@ -48,6 +48,29 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Keep the exact same line order.')
   })
 
+  it('includes glossary entries before localization lines', () => {
+    const prompt = buildPrompt(batch(' key:0 "Empire"'), {
+      glossaryEntries: [{ source: 'Empire', target: '제국' }],
+    })
+
+    expect(prompt).toContain('Glossary:')
+    expect(prompt).toContain('- Empire => 제국')
+    expect(prompt.indexOf('Glossary:')).toBeLessThan(prompt.indexOf('Localization lines:'))
+  })
+
+  it('includes custom instructions without replacing core rules', () => {
+    const prompt = buildPrompt(batch(' key:0 "Value"'), {
+      customInstructions: 'Use a formal historical tone.',
+    })
+
+    expect(prompt).toContain('Core rules:')
+    expect(prompt).toContain('User style instructions:')
+    expect(prompt).toContain('Use a formal historical tone.')
+    expect(prompt.indexOf('Core rules:')).toBeLessThan(
+      prompt.indexOf('User style instructions:'),
+    )
+  })
+
   it('requires preserving placeholders and escaped newline markers', () => {
     const prompt = buildPrompt(batch(' tooltip:0 "<P0> gains <P1>\\n#P Good #!"'))
 

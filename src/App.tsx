@@ -22,6 +22,8 @@ import {
 } from './core/runTranslation'
 import { DEFAULT_OLLAMA_ENDPOINT } from './ollama/checkOllama'
 import { DEFAULT_TRANSLATION_MODEL } from './ollama/translateBatch'
+import { buildPrompt } from './ollama/buildPrompt'
+import { parseGlossary } from './prompt/parseGlossary'
 import {
   getTranslationProvider,
   PROVIDER_OPTIONS,
@@ -399,11 +401,15 @@ function App() {
   const [includeBomOnDownload, setIncludeBomOnDownload] = useState(true)
   const [showOllamaInfo, setShowOllamaInfo] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
+  const [customInstructions, setCustomInstructions] = useState('')
+  const [glossaryText, setGlossaryText] = useState('')
+  const [showPromptPreview, setShowPromptPreview] = useState(false)
   const totalBytes = uploadedFiles.reduce((sum, file) => sum + file.size, 0)
   const bomCount = uploadedFiles.filter((file) => file.hadBom).length
   const normalizedBatchSize = Number.isFinite(batchSize) ? batchSize : 80
   const normalizedConcurrency = Number.isFinite(concurrency) ? concurrency : 2
   const normalizedTemperature = Number.isFinite(temperature) ? temperature : 0.1
+  const glossaryEntries = parseGlossary(glossaryText)
   const batchCount =
     localizationEntries.length > 0
       ? createBatches(localizationEntries, {
@@ -437,6 +443,8 @@ function App() {
     keepAlive: '30m',
     sourceLanguage,
     targetLanguage,
+    customInstructions,
+    glossaryEntries,
   }
   const sourceLanguageLabel = uiLanguage === 'ko' ? '시작 언어' : 'Source Language'
   const targetLanguageLabel = uiLanguage === 'ko' ? '도착 언어' : 'Target Language'
@@ -469,6 +477,26 @@ function App() {
       : uiLanguage === 'ko'
         ? '외부 API 사용 시 번역할 파일 내용이 선택한 provider로 전송되며 요금이 발생할 수 있습니다.'
         : 'External APIs receive the text being translated and may incur usage costs.'
+  const promptTitle = uiLanguage === 'ko' ? '프롬프트 / 용어집' : 'Prompt / Glossary'
+  const promptDesc =
+    uiLanguage === 'ko'
+      ? '고정 구조 보존 규칙에 추가 지시사항과 용어집을 더합니다.'
+      : 'Add custom instructions and glossary terms without replacing the core safety rules.'
+  const promptPreviewText = buildPrompt(
+    {
+      batchIndex: 0,
+      entries: [],
+      promptText:
+        localizationEntries[0]?.rawLine ?? ' sample_key:0 "Sample localization text."',
+      charCount: 0,
+    },
+    {
+      sourceLanguage,
+      targetLanguage,
+      customInstructions,
+      glossaryEntries,
+    },
+  )
 
   function applyUploadResult(result: Awaited<ReturnType<typeof readUploadedTextFiles>>) {
     let globalIndexStart = 0
@@ -662,8 +690,8 @@ function App() {
                   ? '번역 화면으로 돌아가기'
                   : 'Back to Translator'
                 : uiLanguage === 'ko'
-                  ? 'Ollama 설정 안내'
-                  : 'Ollama Setup Guide'}
+                  ? '설정 안내'
+                  : 'Setup Guide'}
             </button>
             <span className="text-xs font-semibold uppercase text-slate-500">{t.interface}</span>
             <div className="grid grid-cols-2 border border-slate-300 bg-slate-100 p-1">
@@ -1072,6 +1100,96 @@ function App() {
                 <Metric label={t.topP} value="0.9" />
                 <Metric label={t.penalty} value="1.05" />
                 <Metric label={t.maxChars} value="12000" />
+              </div>
+            </SectionCard>
+
+            <SectionCard title={promptTitle} description={promptDesc}>
+              <div className="space-y-4">
+                <label className="space-y-1 text-sm text-slate-700">
+                  <span className="block text-xs font-semibold uppercase text-slate-500">
+                    {uiLanguage === 'ko' ? '사용자 지시사항' : 'Custom Instructions'}
+                  </span>
+                  <textarea
+                    value={customInstructions}
+                    onChange={(event) => setCustomInstructions(event.currentTarget.value)}
+                    rows={4}
+                    placeholder={
+                      uiLanguage === 'ko'
+                        ? '예: 역사 전략 게임 문체로, 자연스럽고 격식 있게 번역하세요.'
+                        : 'Example: Use a natural grand strategy game tone.'
+                    }
+                    className="w-full resize-y border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#476a5f]"
+                  />
+                </label>
+
+                <label className="space-y-1 text-sm text-slate-700">
+                  <span className="block text-xs font-semibold uppercase text-slate-500">
+                    {uiLanguage === 'ko' ? '용어집' : 'Glossary'}
+                  </span>
+                  <textarea
+                    value={glossaryText}
+                    onChange={(event) => setGlossaryText(event.currentTarget.value)}
+                    rows={5}
+                    placeholder={[
+                      'Empire => 제국',
+                      'War Support = 전쟁 지지도',
+                      'Legitimacy\t정통성',
+                    ].join('\n')}
+                    className="w-full resize-y border border-slate-300 bg-white px-3 py-2 font-mono text-sm outline-none focus:border-[#476a5f]"
+                  />
+                </label>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <Metric
+                    label={uiLanguage === 'ko' ? '용어 수' : 'Terms'}
+                    value={glossaryEntries.length}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptPreview((current) => !current)}
+                    className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:border-[#476a5f]"
+                  >
+                    {showPromptPreview
+                      ? uiLanguage === 'ko'
+                        ? '미리보기 숨기기'
+                        : 'Hide Preview'
+                      : uiLanguage === 'ko'
+                        ? '프롬프트 미리보기'
+                        : 'Preview Prompt'}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomInstructions('')
+                      setGlossaryText('')
+                    }}
+                    className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#476a5f]"
+                  >
+                    {uiLanguage === 'ko' ? '초기화' : 'Reset'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGlossaryText(
+                        ['Empire => 제국', 'Authority => 권위', 'War Support => 전쟁 지지도'].join(
+                          '\n',
+                        ),
+                      )
+                    }
+                    className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#476a5f]"
+                  >
+                    {uiLanguage === 'ko' ? '예시 넣기' : 'Insert Example'}
+                  </button>
+                </div>
+
+                {showPromptPreview ? (
+                  <pre className="max-h-96 overflow-auto bg-slate-950 p-3 text-xs text-slate-50">
+                    <code>{promptPreviewText}</code>
+                  </pre>
+                ) : null}
               </div>
             </SectionCard>
 
