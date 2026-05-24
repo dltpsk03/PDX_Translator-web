@@ -185,4 +185,15 @@ describe('validateTranslatedBatch', () => {
       errors: [],
     })
   })
+
+  it('accepts :0 added by the model for entries that originally had no numeric version', () => {
+    const batch = batchFrom(' je_arab_spring: "The Arab Spring"')
+
+    const result = validateTranslatedBatch(batch, ' je_arab_spring:0 "아랍의 봄"')
+
+    expect(result).toEqual({
+      ok: true,
+      errors: [],
+    })
+  })
 })

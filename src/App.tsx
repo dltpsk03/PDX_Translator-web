@@ -34,7 +34,7 @@ import type { LocalizationEntry, ParsedLine } from './types/paradox'
 import type { RejectedUploadFile, UploadedTextFile } from './types/uploadedFile'
 
 type UiLanguage = 'en' | 'ko'
-type AppStep = 'prepare' | 'run' | 'result' | 'review'
+type AppStep = 'prepare' | 'runResult' | 'review'
 type ThemeMode = 'light' | 'dark'
 
 type ParsedUploadedFile = {
@@ -671,20 +671,14 @@ function App() {
       status: prepareReady ? 'OK' : uiLanguage === 'ko' ? '필요' : 'Required',
     },
     {
-      id: 'run',
-      label: uiLanguage === 'ko' ? '2 실행' : '2 Run',
-      detail: uiLanguage === 'ko' ? '번역 진행 상태' : 'Translation progress',
+      id: 'runResult',
+      label: uiLanguage === 'ko' ? '2 실행 / 결과' : '2 Run / Result',
+      detail: uiLanguage === 'ko' ? '진행, 다운로드, 재시도' : 'Progress, download, retry',
       status: translationStatus === 'running' ? (uiLanguage === 'ko' ? '진행중' : 'Running') : '',
     },
     {
-      id: 'result',
-      label: uiLanguage === 'ko' ? '3 결과' : '3 Result',
-      detail: uiLanguage === 'ko' ? '다운로드와 재시도' : 'Download and retry',
-      status: translationResults.length > 0 ? (uiLanguage === 'ko' ? '준비' : 'Ready') : '',
-    },
-    {
       id: 'review',
-      label: uiLanguage === 'ko' ? '4 검토' : '4 Review',
+      label: uiLanguage === 'ko' ? '3 검토' : '3 Review',
       detail: uiLanguage === 'ko' ? '파일별, 실패, 품질' : 'Files, failures, quality',
       status:
         failedTranslationEntries.length > 0
@@ -1191,7 +1185,7 @@ function App() {
           </div>
         ) : null}
 
-        <nav className="mb-5 grid grid-cols-4 border border-slate-300 bg-white p-1">
+        <nav className="mb-5 grid grid-cols-3 border border-slate-300 bg-white p-1">
           {steps.map((step) => (
             <button
               key={step.id}
@@ -1226,7 +1220,13 @@ function App() {
           ))}
         </nav>
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+        <section
+          className={
+            activeStep === 'review'
+              ? 'grid grid-cols-1 gap-4'
+              : 'grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]'
+          }
+        >
           <div className="space-y-4">
             {activeStep === 'prepare' ? (
             <SectionCard title={t.fileUpload} description={t.fileUploadDesc}>
@@ -1298,7 +1298,102 @@ function App() {
             </SectionCard>
             ) : null}
 
-            {activeStep === 'run' ? (
+            {activeStep === 'prepare' ? (
+              <SectionCard title={engineTitle} description={engineDesc}>
+                <div className="space-y-4 text-sm text-slate-700">
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span className="block text-xs font-semibold uppercase text-slate-500">
+                      {providerLabel}
+                    </span>
+                    <select
+                      value={providerId}
+                      onChange={(event) => {
+                        const nextProviderId = event.currentTarget.value as ProviderId
+                        const nextProvider = getTranslationProvider(nextProviderId)
+
+                        setProviderId(nextProviderId)
+                        setModel(nextProvider.defaultModel)
+                        setProviderStatus('idle')
+                        setProviderCheckDetail(null)
+                        setProviderError(null)
+                        setProviderModels([])
+                        setExternalApiConfirmed(nextProviderId === 'ollama')
+                      }}
+                      className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
+                    >
+                      {PROVIDER_OPTIONS.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="grid gap-3 border border-slate-300 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500">
+                        {t.status}
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-950">{statusLabel}</div>
+                      {providerCheckDetail ? (
+                        <div className="mt-1 text-xs text-slate-500">{providerCheckDetail}</div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCheckProvider}
+                      disabled={providerStatus === 'checking'}
+                      className="bg-[#d7b36b] px-4 py-2 font-semibold text-slate-950 transition hover:bg-[#e5c77e] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {providerStatus === 'checking' ? t.checking : t.checkConnection}
+                    </button>
+                  </div>
+
+                  <div className="border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700">
+                    <div className="text-xs font-semibold uppercase text-slate-500">
+                      {uiLanguage === 'ko' ? 'Provider 설정' : 'Provider Setup'}
+                    </div>
+                    <p className="mt-1">{providerSetupText}</p>
+                  </div>
+
+                  <div
+                    className={
+                      providerId === 'ollama'
+                        ? 'border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700'
+                        : 'border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900'
+                    }
+                  >
+                    {providerPrivacyText}
+                    {providerId !== 'ollama' ? (
+                      <label className="mt-3 flex items-start gap-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={externalApiConfirmed}
+                          onChange={(event) =>
+                            setExternalApiConfirmed(event.currentTarget.checked)
+                          }
+                          className="mt-1 h-4 w-4"
+                        />
+                        <span>
+                          {uiLanguage === 'ko'
+                            ? '번역할 파일 내용이 선택한 외부 API로 전송되는 것을 확인했습니다.'
+                            : 'I understand that file contents will be sent to the selected external API.'}
+                        </span>
+                      </label>
+                    ) : null}
+                  </div>
+
+                  {providerStatus === 'failed' ? (
+                    <div className="border border-red-200 bg-red-50 px-3 py-3 text-red-900">
+                      <p className="font-semibold">{t.unableToConnect}</p>
+                      {providerError ? <p className="mt-1">{providerError}</p> : null}
+                    </div>
+                  ) : null}
+                </div>
+              </SectionCard>
+            ) : null}
+
+            {activeStep === 'runResult' ? (
             <SectionCard title={t.progress} description={t.progressDesc}>
               <div className="space-y-4">
                 <div>
@@ -1416,7 +1511,7 @@ function App() {
           </div>
 
           <div className="space-y-4">
-            {activeStep === 'prepare' ? (
+            {false && activeStep === 'prepare' ? (
             <SectionCard title={engineTitle} description={engineDesc}>
               <div className="space-y-4 text-sm text-slate-700">
                 <label className="space-y-1 text-sm text-slate-700">
@@ -1528,9 +1623,9 @@ function App() {
             ) : null}
 
             {activeStep === 'prepare' ? (
-            <details className="border border-slate-300 bg-white">
+            <details open className="border border-slate-300 bg-white">
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">
-                {uiLanguage === 'ko' ? '번역 옵션 열기' : 'Open Translation Options'}
+                {uiLanguage === 'ko' ? '번역 옵션' : 'Translation Options'}
                 <span className="ml-2 text-xs font-normal text-slate-500">
                   {normalizedBatchSize} / {normalizedConcurrency}
                 </span>
@@ -1877,7 +1972,7 @@ function App() {
             </details>
             ) : null}
 
-            {activeStep === 'result' ? (
+            {activeStep === 'runResult' ? (
             <SectionCard title={t.resultDownload} description={t.resultDesc}>
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-3 text-sm">

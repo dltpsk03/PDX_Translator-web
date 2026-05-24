@@ -89,7 +89,11 @@ export function validateTranslatedBatch(
       )
     }
 
-    if (translatedLine.version !== originalEntry.version) {
+    const versionMatches =
+      translatedLine.version === originalEntry.version ||
+      (originalEntry.version === '' && translatedLine.version === ':0')
+
+    if (!versionMatches) {
       errors.push(
         createEntryError(
           batch,

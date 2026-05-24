@@ -10,19 +10,16 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { name: 'Paradox MOD YML Translator' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /1 Prepare/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /2 Run/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /3 Result/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /4 Review/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /2 Run \/ Result/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /3 Review/ })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'File Upload' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Translation Engine' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /2 Run/ }))
+    fireEvent.click(screen.getByRole('button', { name: /2 Run \/ Result/ }))
     expect(screen.getByRole('heading', { name: 'Progress' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /3 Result/ }))
     expect(screen.getByRole('heading', { name: 'Result Download' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /4 Review/ }))
+    fireEvent.click(screen.getByRole('button', { name: /3 Review/ }))
     expect(screen.getByRole('heading', { name: 'File Progress' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Failure / Quality Report' })).toBeInTheDocument()
   })
