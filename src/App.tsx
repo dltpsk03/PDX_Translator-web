@@ -34,6 +34,8 @@ import type { LocalizationEntry, ParsedLine } from './types/paradox'
 import type { RejectedUploadFile, UploadedTextFile } from './types/uploadedFile'
 
 type UiLanguage = 'en' | 'ko'
+type AppStep = 'prepare' | 'run' | 'result' | 'review'
+type ThemeMode = 'light' | 'dark'
 
 type ParsedUploadedFile = {
   file: UploadedTextFile
@@ -438,6 +440,8 @@ function App() {
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>('ko')
   const t = copy[uiLanguage]
   const [storedSettings] = useState(readStoredSettings)
+  const [activeStep, setActiveStep] = useState<AppStep>('prepare')
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light')
   const [uploadedFiles, setUploadedFiles] = useState<UploadedTextFile[]>([])
   const [parsedFiles, setParsedFiles] = useState<ParsedUploadedFile[]>([])
   const [localizationEntries, setLocalizationEntries] = useState<LocalizationEntry[]>([])
@@ -526,7 +530,46 @@ function App() {
     entriesPerMinute > 0 ? Math.ceil(remainingEntries / entriesPerMinute) : null
   const successfulEntries = translationResults.filter((result) => !result.failed).length
   const originalKeptEntries = translationResults.filter((result) => result.failed).length
+  const translationResultMap = createTranslationResultMap(translationResults)
+  const unchangedTranslationCount = translationResults.filter(
+    (result) => !result.failed && result.translatedValue === result.entry.value,
+  ).length
+  const missingResultCount = Math.max(0, localizationEntries.length - translationResults.length)
+  const reviewFileStats = parsedFiles.map((parsedFile) => {
+    const entries = parsedFile.parsedLines.filter(
+      (line): line is LocalizationEntry => line.type === 'entry',
+    )
+    const translated = entries.filter((entry) => {
+      const result = translationResultMap.get(entry.globalIndex)
+      return result && !result.failed
+    }).length
+    const failed = entries.filter((entry) => translationResultMap.get(entry.globalIndex)?.failed)
+      .length
+
+    return {
+      fileName: parsedFile.file.relativePath,
+      total: entries.length,
+      translated,
+      failed,
+    }
+  })
+  const previewFile = parsedFiles[0]
+  const previewLines =
+    previewFile?.parsedLines
+      .filter((line): line is LocalizationEntry => line.type === 'entry')
+      .slice(0, 12)
+      .map((entry) => ({
+        key: entry.key,
+        original: entry.value,
+        translated: translationResultMap.get(entry.globalIndex)?.translatedValue ?? entry.value,
+      })) ?? []
   const canUseExternalApi = providerId === 'ollama' || externalApiConfirmed
+  const prepareReady =
+    uploadedFiles.length > 0 &&
+    localizationEntries.length > 0 &&
+    providerStatus === 'connected' &&
+    canUseExternalApi &&
+    sourceLanguage !== targetLanguage
   const selectedProvider = getTranslationProvider(providerId)
   const statusLabel =
     providerStatus === 'connected'
@@ -615,6 +658,42 @@ function App() {
       glossaryEntries,
     },
   )
+  const steps: Array<{
+    id: AppStep
+    label: string
+    detail: string
+    status: string
+  }> = [
+    {
+      id: 'prepare',
+      label: uiLanguage === 'ko' ? '1 준비' : '1 Prepare',
+      detail: uiLanguage === 'ko' ? '파일, 엔진, 선택 옵션' : 'Files, engine, optional controls',
+      status: prepareReady ? 'OK' : uiLanguage === 'ko' ? '필요' : 'Required',
+    },
+    {
+      id: 'run',
+      label: uiLanguage === 'ko' ? '2 실행' : '2 Run',
+      detail: uiLanguage === 'ko' ? '번역 진행 상태' : 'Translation progress',
+      status: translationStatus === 'running' ? (uiLanguage === 'ko' ? '진행중' : 'Running') : '',
+    },
+    {
+      id: 'result',
+      label: uiLanguage === 'ko' ? '3 결과' : '3 Result',
+      detail: uiLanguage === 'ko' ? '다운로드와 재시도' : 'Download and retry',
+      status: translationResults.length > 0 ? (uiLanguage === 'ko' ? '준비' : 'Ready') : '',
+    },
+    {
+      id: 'review',
+      label: uiLanguage === 'ko' ? '4 검토' : '4 Review',
+      detail: uiLanguage === 'ko' ? '파일별, 실패, 품질' : 'Files, failures, quality',
+      status:
+        failedTranslationEntries.length > 0
+          ? `${failedTranslationEntries.length}`
+          : translationResults.length > 0
+            ? 'OK'
+            : '',
+    },
+  ]
 
   useEffect(() => {
     const settings: StoredSettings = {
@@ -1027,7 +1106,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f6f2] text-slate-950">
+    <main data-theme={themeMode} className="app-shell min-h-screen bg-[#f5f6f2] text-slate-950">
       <div className="border-b border-slate-300 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -1036,6 +1115,19 @@ function App() {
             <p className="mt-1 text-sm text-slate-600">{t.appSubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setThemeMode((current) => (current === 'light' ? 'dark' : 'light'))}
+              className="border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-[#476a5f]"
+            >
+              {themeMode === 'light'
+                ? uiLanguage === 'ko'
+                  ? '다크 모드'
+                  : 'Dark Mode'
+                : uiLanguage === 'ko'
+                  ? '라이트 모드'
+                  : 'Light Mode'}
+            </button>
             <button
               type="button"
               onClick={() => setShowOllamaInfo((current) => !current)}
@@ -1099,8 +1191,44 @@ function App() {
           </div>
         ) : null}
 
+        <nav className="mb-5 grid grid-cols-4 border border-slate-300 bg-white p-1">
+          {steps.map((step) => (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => setActiveStep(step.id)}
+              className={`px-4 py-3 text-left transition ${
+                activeStep === step.id
+                  ? 'bg-[#1f2f2a] text-white'
+                  : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold">{step.label}</span>
+                {step.status ? (
+                  <span
+                    className={`text-[11px] font-semibold uppercase ${
+                      activeStep === step.id ? 'text-[#d7b36b]' : 'text-[#476a5f]'
+                    }`}
+                  >
+                    {step.status}
+                  </span>
+                ) : null}
+              </span>
+              <span
+                className={`mt-1 block text-xs ${
+                  activeStep === step.id ? 'text-slate-200' : 'text-slate-500'
+                }`}
+              >
+                {step.detail}
+              </span>
+            </button>
+          ))}
+        </nav>
+
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
+            {activeStep === 'prepare' ? (
             <SectionCard title={t.fileUpload} description={t.fileUploadDesc}>
               <div className="space-y-4">
                 <label
@@ -1168,7 +1296,9 @@ function App() {
                 )}
               </div>
             </SectionCard>
+            ) : null}
 
+            {activeStep === 'run' ? (
             <SectionCard title={t.progress} description={t.progressDesc}>
               <div className="space-y-4">
                 <div>
@@ -1282,9 +1412,11 @@ function App() {
                 ) : null}
               </div>
             </SectionCard>
+            ) : null}
           </div>
 
           <div className="space-y-4">
+            {activeStep === 'prepare' ? (
             <SectionCard title={engineTitle} description={engineDesc}>
               <div className="space-y-4 text-sm text-slate-700">
                 <label className="space-y-1 text-sm text-slate-700">
@@ -1393,7 +1525,16 @@ function App() {
                 ) : null}
               </div>
             </SectionCard>
+            ) : null}
 
+            {activeStep === 'prepare' ? (
+            <details className="border border-slate-300 bg-white">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">
+                {uiLanguage === 'ko' ? '번역 옵션 열기' : 'Open Translation Options'}
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  {normalizedBatchSize} / {normalizedConcurrency}
+                </span>
+              </summary>
             <SectionCard title={t.settings} description={t.settingsDesc}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="space-y-1 text-sm text-slate-700">
@@ -1556,7 +1697,23 @@ function App() {
                 <Metric label={t.maxChars} value="12000" />
               </div>
             </SectionCard>
+            </details>
+            ) : null}
 
+            {activeStep === 'prepare' ? (
+            <details className="border border-slate-300 bg-white">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">
+                {uiLanguage === 'ko' ? '프롬프트 / 용어집 열기' : 'Open Prompt / Glossary'}
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  {glossaryEntries.length
+                    ? uiLanguage === 'ko'
+                      ? `용어 ${glossaryEntries.length}`
+                      : `${glossaryEntries.length} terms`
+                    : uiLanguage === 'ko'
+                      ? '선택'
+                      : 'Optional'}
+                </span>
+              </summary>
             <SectionCard title={promptTitle} description={promptDesc}>
               <div className="space-y-4">
                 <label className="space-y-1 text-sm text-slate-700">
@@ -1717,7 +1874,10 @@ function App() {
                 ) : null}
               </div>
             </SectionCard>
+            </details>
+            ) : null}
 
+            {activeStep === 'result' ? (
             <SectionCard title={t.resultDownload} description={t.resultDesc}>
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-3 text-sm">
@@ -1797,6 +1957,129 @@ function App() {
                 ) : null}
               </div>
             </SectionCard>
+            ) : null}
+
+            {activeStep === 'review' ? (
+              <>
+                <SectionCard
+                  title={uiLanguage === 'ko' ? '파일별 진행' : 'File Progress'}
+                  description={
+                    uiLanguage === 'ko'
+                      ? '파일마다 번역 완료와 실패 수를 확인합니다.'
+                      : 'Check translated and failed entries by file.'
+                  }
+                >
+                  <div className="max-h-80 overflow-auto border border-slate-300">
+                    {reviewFileStats.length > 0 ? (
+                      <table className="w-full border-collapse text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2 text-left">File</th>
+                            <th className="px-3 py-2 text-right">Total</th>
+                            <th className="px-3 py-2 text-right">Done</th>
+                            <th className="px-3 py-2 text-right">Failed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reviewFileStats.map((file) => (
+                            <tr key={file.fileName} className="border-t border-slate-200">
+                              <td className="max-w-[420px] truncate px-3 py-2 font-medium">
+                                {file.fileName}
+                              </td>
+                              <td className="px-3 py-2 text-right">{file.total}</td>
+                              <td className="px-3 py-2 text-right">{file.translated}</td>
+                              <td className="px-3 py-2 text-right">{file.failed}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="p-3 text-sm text-slate-500">
+                        {uiLanguage === 'ko'
+                          ? '검토할 파일이 없습니다.'
+                          : 'No files to review yet.'}
+                      </p>
+                    )}
+                  </div>
+                </SectionCard>
+
+                <SectionCard
+                  title={uiLanguage === 'ko' ? '결과 미리보기' : 'Result Preview'}
+                  description={
+                    uiLanguage === 'ko'
+                      ? '첫 번째 파일의 일부 항목을 원문과 결과로 비교합니다.'
+                      : 'Compare a sample from the first file.'
+                  }
+                >
+                  <div className="max-h-96 overflow-auto border border-slate-300">
+                    {previewLines.length > 0 ? (
+                      <div className="divide-y divide-slate-200 text-sm">
+                        {previewLines.map((line) => (
+                          <div key={line.key} className="grid grid-cols-[180px_1fr_1fr] gap-3 p-3">
+                            <div className="font-mono text-xs font-semibold text-slate-500">
+                              {line.key}
+                            </div>
+                            <div className="break-words text-slate-700">{line.original}</div>
+                            <div className="break-words font-medium text-slate-950">
+                              {line.translated}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="p-3 text-sm text-slate-500">
+                        {uiLanguage === 'ko'
+                          ? '미리볼 번역 결과가 없습니다.'
+                          : 'No previewable results yet.'}
+                      </p>
+                    )}
+                  </div>
+                </SectionCard>
+
+                <SectionCard
+                  title={uiLanguage === 'ko' ? '실패 / 품질 리포트' : 'Failure / Quality Report'}
+                  description={
+                    uiLanguage === 'ko'
+                      ? '다운로드 전에 눈에 띄는 위험 신호만 간단히 확인합니다.'
+                      : 'Review only the most important warnings before download.'
+                  }
+                >
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <Metric
+                      label={uiLanguage === 'ko' ? '실패' : 'Failed'}
+                      value={failedTranslationEntries.length}
+                    />
+                    <Metric
+                      label={uiLanguage === 'ko' ? '원문 동일' : 'Unchanged'}
+                      value={unchangedTranslationCount}
+                    />
+                    <Metric
+                      label={uiLanguage === 'ko' ? '미처리' : 'Missing'}
+                      value={missingResultCount}
+                    />
+                  </div>
+
+                  {failedTranslationEntries.length > 0 ? (
+                    <ul className="mt-4 max-h-44 space-y-2 overflow-auto border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                      {failedTranslationEntries.slice(0, 20).map((failedEntry) => (
+                        <li key={failedEntry.entry.globalIndex}>
+                          <span className="font-mono text-xs">{failedEntry.entry.key}</span>
+                          <span className="ml-2">
+                            {failedEntry.entry.fileName}:{failedEntry.entry.lineIndex + 1}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-4 border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                      {uiLanguage === 'ko'
+                        ? '현재 표시할 실패 항목이 없습니다.'
+                        : 'No failed entries to show.'}
+                    </p>
+                  )}
+                </SectionCard>
+              </>
+            ) : null}
           </div>
         </section>
           </>

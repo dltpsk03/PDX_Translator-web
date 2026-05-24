@@ -1,16 +1,29 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 
 import App from './App'
 
 describe('App', () => {
-  it('renders the initial translation dashboard sections', () => {
+  it('renders the workflow tabs and switches between primary views', () => {
     render(<App />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'English' }))
+
     expect(screen.getByRole('heading', { name: 'Paradox MOD YML Translator' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '파일 업로드' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '번역 엔진' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '번역 설정' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '진행률' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '결과 다운로드' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /1 Prepare/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /2 Run/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /3 Result/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /4 Review/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'File Upload' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Translation Engine' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /2 Run/ }))
+    expect(screen.getByRole('heading', { name: 'Progress' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /3 Result/ }))
+    expect(screen.getByRole('heading', { name: 'Result Download' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /4 Review/ }))
+    expect(screen.getByRole('heading', { name: 'File Progress' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Failure / Quality Report' })).toBeInTheDocument()
   })
 })

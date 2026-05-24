@@ -31,3 +31,80 @@ input,
 select {
   font: inherit;
 }
+
+.app-shell {
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.app-shell[data-theme="dark"] {
+  background: #11130f;
+  color: #e7eadf;
+}
+
+.app-shell[data-theme="dark"] .bg-white {
+  background-color: #181b16 !important;
+}
+
+.app-shell[data-theme="dark"] .bg-slate-50,
+.app-shell[data-theme="dark"] .bg-slate-100,
+.app-shell[data-theme="dark"] .bg-\[\#fbfcf8\] {
+  background-color: #20241d !important;
+}
+
+.app-shell[data-theme="dark"] .bg-\[\#f5f6f2\] {
+  background-color: #11130f !important;
+}
+
+.app-shell[data-theme="dark"] .text-slate-950,
+.app-shell[data-theme="dark"] .text-slate-900,
+.app-shell[data-theme="dark"] .text-slate-800,
+.app-shell[data-theme="dark"] .text-slate-700 {
+  color: #e7eadf !important;
+}
+
+.app-shell[data-theme="dark"] .text-slate-600,
+.app-shell[data-theme="dark"] .text-slate-500,
+.app-shell[data-theme="dark"] .text-slate-400 {
+  color: #aeb7a6 !important;
+}
+
+.app-shell[data-theme="dark"] .border-slate-100,
+.app-shell[data-theme="dark"] .border-slate-200,
+.app-shell[data-theme="dark"] .border-slate-300,
+.app-shell[data-theme="dark"] .border-slate-400 {
+  border-color: #3d4538 !important;
+}
+
+.app-shell[data-theme="dark"] input,
+.app-shell[data-theme="dark"] select,
+.app-shell[data-theme="dark"] textarea {
+  background-color: #11130f !important;
+  border-color: #3d4538 !important;
+  color: #e7eadf !important;
+}
+
+.app-shell[data-theme="dark"] input::placeholder,
+.app-shell[data-theme="dark"] textarea::placeholder {
+  color: #7f8977 !important;
+}
+
+.app-shell[data-theme="dark"] .bg-amber-50,
+.app-shell[data-theme="dark"] .bg-\[\#fff8e7\] {
+  background-color: #332814 !important;
+}
+
+.app-shell[data-theme="dark"] .text-amber-900,
+.app-shell[data-theme="dark"] .text-\[\#6b4b16\] {
+  color: #f4d58a !important;
+}
+
+.app-shell[data-theme="dark"] .bg-red-50 {
+  background-color: #351718 !important;
+}
+
+.app-shell[data-theme="dark"] .text-red-900,
+.app-shell[data-theme="dark"] .text-red-700 {
+  color: #ffb4ab !important;
+}
