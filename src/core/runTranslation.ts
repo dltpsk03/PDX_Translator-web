@@ -36,6 +36,8 @@ export type RunTranslationOptions = {
   batchSize?: number
   concurrency?: number
   maxChars?: number
+  retryAttempts?: number
+  splitFailedBatches?: boolean
   translateBatch?: (batch: TranslationBatch) => Promise<string>
   signal?: AbortSignal
   onProgress?: (progress: TranslationProgress) => void
@@ -50,6 +52,12 @@ export type RunTranslationResult = {
 function assertPositiveInteger(name: string, value: number) {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${name} must be a positive integer.`)
+  }
+}
+
+function assertNonNegativeInteger(name: string, value: number) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer.`)
   }
 }
 
@@ -131,11 +139,12 @@ async function processBatch(
   batch: TranslationBatch,
   translateBatch: (batch: TranslationBatch) => Promise<string>,
   allowSplit: boolean,
+  retryAttempts: number,
   onRetry?: (message: string) => void,
 ): Promise<TranslatedEntryResult[]> {
   let lastErrors: ValidationError[] = []
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt <= retryAttempts; attempt += 1) {
     try {
       const result = await translateAndValidate(batch, translateBatch)
 
@@ -144,7 +153,7 @@ async function processBatch(
       }
 
       lastErrors = result.errors
-      if (attempt === 0) {
+      if (attempt < retryAttempts) {
         onRetry?.(lastErrors[0]?.message ?? 'Validation failed; retrying batch.')
       }
     } catch (error) {
@@ -158,7 +167,7 @@ async function processBatch(
           error instanceof Error ? error.message : 'Translation request failed.',
         ),
       ]
-      if (attempt === 0) {
+      if (attempt < retryAttempts) {
         onRetry?.(lastErrors[0]?.message ?? 'Translation request failed; retrying batch.')
       }
     }
@@ -172,7 +181,7 @@ async function processBatch(
     ]
     const splitResults = await Promise.all(
       splitBatches.map((splitBatch) =>
-        processBatch(splitBatch, translateBatch, false, onRetry),
+        processBatch(splitBatch, translateBatch, false, retryAttempts, onRetry),
       ),
     )
 
@@ -187,6 +196,8 @@ export async function runTranslation({
   batchSize = 20,
   concurrency = 30,
   maxChars = 12000,
+  retryAttempts = 1,
+  splitFailedBatches = true,
   translateBatch = defaultTranslateBatch,
   signal,
   onProgress,
@@ -194,6 +205,7 @@ export async function runTranslation({
   assertPositiveInteger('batchSize', batchSize)
   assertPositiveInteger('concurrency', concurrency)
   assertPositiveInteger('maxChars', maxChars)
+  assertNonNegativeInteger('retryAttempts', retryAttempts)
 
   const batches = createBatches(entries, {
     maxLines: batchSize,
@@ -223,11 +235,17 @@ export async function runTranslation({
       onProgress?.({ ...progress })
 
       try {
-        const batchResults = await processBatch(batch, translateBatch, true, (message) => {
-          progress.retriedBatches += 1
-          progress.recentError = message
-          onProgress?.({ ...progress })
-        })
+        const batchResults = await processBatch(
+          batch,
+          translateBatch,
+          splitFailedBatches,
+          retryAttempts,
+          (message) => {
+            progress.retriedBatches += 1
+            progress.recentError = message
+            onProgress?.({ ...progress })
+          },
+        )
 
         results.push(...batchResults)
         progress.completedEntries += batch.entries.length

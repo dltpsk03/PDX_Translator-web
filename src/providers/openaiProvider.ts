@@ -71,7 +71,7 @@ async function createOpenAIResponse(
 export const openaiProvider: TranslationProvider = {
   id: 'openai',
   label: 'OpenAI GPT',
-  defaultModel: 'gpt-5.1',
+  defaultModel: 'gpt-5.4',
   requiresApiKey: true,
   async checkConnection(settings) {
     if (!settings.apiKey.trim()) {

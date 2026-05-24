@@ -93,7 +93,7 @@ async function checkClaudeModel(settings: Parameters<TranslationProvider['checkC
 export const claudeProvider: TranslationProvider = {
   id: 'claude',
   label: 'Anthropic Claude',
-  defaultModel: 'claude-sonnet-4-20250514',
+  defaultModel: 'claude-sonnet-4-6',
   requiresApiKey: true,
   async checkConnection(settings) {
     if (!settings.apiKey.trim()) {

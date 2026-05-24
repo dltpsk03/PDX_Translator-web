@@ -39,7 +39,7 @@ async function readGeminiError(response: Response) {
 export const geminiProvider: TranslationProvider = {
   id: 'gemini',
   label: 'Google Gemini API',
-  defaultModel: 'gemini-2.5-flash',
+  defaultModel: 'gemini-3.1-flash-lite',
   requiresApiKey: true,
   async checkConnection(settings) {
     if (!settings.apiKey.trim()) {

@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 
 import { SectionCard } from './components/SectionCard'
 import { createBatches } from './core/createBatches'
@@ -168,6 +168,47 @@ const initialProgress: TranslationProgress = {
   activeBatches: 0,
   retriedBatches: 0,
   recentError: null,
+}
+
+const settingsStorageKey = 'pdx-translator-settings-v1'
+const sessionStorageKey = 'pdx-translator-session-v1'
+const maxStoredSessionCharacters = 3_500_000
+
+type StoredSettings = {
+  providerId?: ProviderId
+  endpoint?: string
+  model?: string
+  sourceLanguage?: ParadoxLanguageCode
+  targetLanguage?: ParadoxLanguageCode
+  batchSize?: number
+  concurrency?: number
+  temperature?: number
+  retryAttempts?: number
+  splitFailedBatches?: boolean
+  includeBomOnDownload?: boolean
+  customInstructions?: string
+  glossaryText?: string
+}
+
+type StoredTranslationResult = {
+  globalIndex: number
+  translatedValue: string
+  outputLine: string
+  failed: boolean
+}
+
+type StoredSession = {
+  files: UploadedTextFile[]
+  results: StoredTranslationResult[]
+  targetLanguage: ParadoxLanguageCode
+}
+
+function readStoredSettings(): StoredSettings {
+  try {
+    return JSON.parse(localStorage.getItem(settingsStorageKey) ?? '{}') as StoredSettings
+  } catch {
+    return {}
+  }
 }
 
 function formatBytes(bytes: number) {
@@ -396,6 +437,7 @@ function OllamaInfoPanel({ uiLanguage }: { uiLanguage: UiLanguage }) {
 function App() {
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>('ko')
   const t = copy[uiLanguage]
+  const [storedSettings] = useState(readStoredSettings)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedTextFile[]>([])
   const [parsedFiles, setParsedFiles] = useState<ParsedUploadedFile[]>([])
   const [localizationEntries, setLocalizationEntries] = useState<LocalizationEntry[]>([])
@@ -406,15 +448,23 @@ function App() {
   const [providerCheckDetail, setProviderCheckDetail] = useState<string | null>(null)
   const [providerModels, setProviderModels] = useState<string[]>([])
   const [providerError, setProviderError] = useState<string | null>(null)
-  const [providerId, setProviderId] = useState<ProviderId>('ollama')
-  const [endpoint, setEndpoint] = useState(DEFAULT_OLLAMA_ENDPOINT)
+  const [providerId, setProviderId] = useState<ProviderId>(storedSettings.providerId ?? 'ollama')
+  const [endpoint, setEndpoint] = useState(storedSettings.endpoint ?? DEFAULT_OLLAMA_ENDPOINT)
   const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState(DEFAULT_TRANSLATION_MODEL)
-  const [sourceLanguage, setSourceLanguage] = useState<ParadoxLanguageCode>('l_english')
-  const [targetLanguage, setTargetLanguage] = useState<ParadoxLanguageCode>('l_korean')
-  const [batchSize, setBatchSize] = useState(20)
-  const [concurrency, setConcurrency] = useState(30)
-  const [temperature, setTemperature] = useState(0.1)
+  const [model, setModel] = useState(storedSettings.model ?? DEFAULT_TRANSLATION_MODEL)
+  const [sourceLanguage, setSourceLanguage] = useState<ParadoxLanguageCode>(
+    storedSettings.sourceLanguage ?? 'l_english',
+  )
+  const [targetLanguage, setTargetLanguage] = useState<ParadoxLanguageCode>(
+    storedSettings.targetLanguage ?? 'l_korean',
+  )
+  const [batchSize, setBatchSize] = useState(storedSettings.batchSize ?? 20)
+  const [concurrency, setConcurrency] = useState(storedSettings.concurrency ?? 30)
+  const [temperature, setTemperature] = useState(storedSettings.temperature ?? 0.1)
+  const [retryAttempts, setRetryAttempts] = useState(storedSettings.retryAttempts ?? 1)
+  const [splitFailedBatches, setSplitFailedBatches] = useState(
+    storedSettings.splitFailedBatches ?? true,
+  )
   const [translationStatus, setTranslationStatus] = useState<
     'idle' | 'running' | 'done' | 'failed' | 'stopped'
   >('idle')
@@ -425,20 +475,28 @@ function App() {
     TranslatedEntryResult[]
   >([])
   const [translationResults, setTranslationResults] = useState<TranslatedEntryResult[]>([])
-  const [includeBomOnDownload, setIncludeBomOnDownload] = useState(true)
+  const [includeBomOnDownload, setIncludeBomOnDownload] = useState(
+    storedSettings.includeBomOnDownload ?? true,
+  )
   const [showOllamaInfo, setShowOllamaInfo] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
-  const [customInstructions, setCustomInstructions] = useState('')
-  const [glossaryText, setGlossaryText] = useState('')
+  const [customInstructions, setCustomInstructions] = useState(
+    storedSettings.customInstructions ?? '',
+  )
+  const [glossaryText, setGlossaryText] = useState(storedSettings.glossaryText ?? '')
   const [glossaryFileName, setGlossaryFileName] = useState<string | null>(null)
   const [showPromptPreview, setShowPromptPreview] = useState(false)
   const [translationStartedAt, setTranslationStartedAt] = useState<number | null>(null)
+  const [externalApiConfirmed, setExternalApiConfirmed] = useState(false)
+  const [restoreNotice, setRestoreNotice] = useState<string | null>(null)
+  const [sessionSavedAt, setSessionSavedAt] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const totalBytes = uploadedFiles.reduce((sum, file) => sum + file.size, 0)
   const bomCount = uploadedFiles.filter((file) => file.hadBom).length
   const normalizedBatchSize = Number.isFinite(batchSize) ? batchSize : 20
   const normalizedConcurrency = Number.isFinite(concurrency) ? concurrency : 30
   const normalizedTemperature = Number.isFinite(temperature) ? temperature : 0.1
+  const normalizedRetryAttempts = Number.isFinite(retryAttempts) ? retryAttempts : 1
   const glossaryDiagnostics = parseGlossaryWithDiagnostics(glossaryText)
   const glossaryEntries = glossaryDiagnostics.entries
   const batchCount =
@@ -468,6 +526,7 @@ function App() {
     entriesPerMinute > 0 ? Math.ceil(remainingEntries / entriesPerMinute) : null
   const successfulEntries = translationResults.filter((result) => !result.failed).length
   const originalKeptEntries = translationResults.filter((result) => result.failed).length
+  const canUseExternalApi = providerId === 'ollama' || externalApiConfirmed
   const selectedProvider = getTranslationProvider(providerId)
   const statusLabel =
     providerStatus === 'connected'
@@ -527,8 +586,8 @@ function App() {
         : 'Tune concurrency for your local PC. If failures increase, lower the concurrent request count.'
       : providerId === 'claude'
         ? uiLanguage === 'ko'
-          ? 'Claude는 Anthropic API 키와 전체 모델 ID가 필요합니다. 예: claude-sonnet-4-20250514'
-          : 'Claude requires an Anthropic API key and full model ID, for example claude-sonnet-4-20250514.'
+          ? 'Claude는 Anthropic API 키와 모델 ID가 필요합니다. 기본값: claude-sonnet-4-6'
+          : 'Claude requires an Anthropic API key and model ID. Default: claude-sonnet-4-6.'
         : providerId === 'openai'
           ? uiLanguage === 'ko'
             ? 'OpenAI는 Responses API를 사용합니다. 모델명과 API 키 권한을 확인하세요.'
@@ -556,6 +615,142 @@ function App() {
       glossaryEntries,
     },
   )
+
+  useEffect(() => {
+    const settings: StoredSettings = {
+      providerId,
+      endpoint,
+      model,
+      sourceLanguage,
+      targetLanguage,
+      batchSize: normalizedBatchSize,
+      concurrency: normalizedConcurrency,
+      temperature: normalizedTemperature,
+      retryAttempts: normalizedRetryAttempts,
+      splitFailedBatches,
+      includeBomOnDownload,
+      customInstructions,
+      glossaryText,
+    }
+
+    localStorage.setItem(settingsStorageKey, JSON.stringify(settings))
+  }, [
+    providerId,
+    endpoint,
+    model,
+    sourceLanguage,
+    targetLanguage,
+    normalizedBatchSize,
+    normalizedConcurrency,
+    normalizedTemperature,
+    normalizedRetryAttempts,
+    splitFailedBatches,
+    includeBomOnDownload,
+    customInstructions,
+    glossaryText,
+  ])
+
+  useEffect(() => {
+    if (uploadedFiles.length === 0) {
+      localStorage.removeItem(sessionStorageKey)
+      setSessionSavedAt(null)
+      return
+    }
+
+    const session: StoredSession = {
+      files: uploadedFiles,
+      targetLanguage,
+      results: translationResults.map((result) => ({
+        globalIndex: result.entry.globalIndex,
+        translatedValue: result.translatedValue,
+        outputLine: result.outputLine,
+        failed: result.failed,
+      })),
+    }
+    const serializedSession = JSON.stringify(session)
+
+    if (serializedSession.length > maxStoredSessionCharacters) {
+      setSessionSavedAt(null)
+      return
+    }
+
+    try {
+      localStorage.setItem(sessionStorageKey, serializedSession)
+      setSessionSavedAt(new Date().toLocaleTimeString())
+    } catch {
+      setSessionSavedAt(null)
+    }
+  }, [uploadedFiles, targetLanguage, translationResults])
+
+  useEffect(() => {
+    const storedSessionText = localStorage.getItem(sessionStorageKey)
+
+    if (!storedSessionText || uploadedFiles.length > 0) {
+      return
+    }
+
+    try {
+      const storedSession = JSON.parse(storedSessionText) as StoredSession
+      let globalIndexStart = 0
+      const nextParsedFiles = storedSession.files.map((file) => {
+        const parsedLines = parseParadoxYml(file.text, {
+          fileName: file.relativePath,
+          globalIndexStart,
+        })
+        const entries = parsedLines.filter(
+          (line): line is LocalizationEntry => line.type === 'entry',
+        )
+
+        globalIndexStart += entries.length
+
+        return {
+          file,
+          parsedLines,
+        }
+      })
+      const nextEntries = nextParsedFiles.flatMap((parsedFile) =>
+        parsedFile.parsedLines.filter((line): line is LocalizationEntry => line.type === 'entry'),
+      )
+      const entryMap = new Map(nextEntries.map((entry) => [entry.globalIndex, entry]))
+      const restoredResults = storedSession.results.flatMap((storedResult) => {
+        const entry = entryMap.get(storedResult.globalIndex)
+
+        return entry
+          ? [
+              {
+                entry,
+                translatedValue: storedResult.translatedValue,
+                outputLine: storedResult.outputLine,
+                failed: storedResult.failed,
+                errors: [],
+              },
+            ]
+          : []
+      })
+
+      setUploadedFiles(storedSession.files)
+      setParsedFiles(nextParsedFiles)
+      setLocalizationEntries(nextEntries)
+      setTranslationResults(restoredResults)
+      setFailedTranslationEntries(restoredResults.filter((result) => result.failed))
+      setTranslationProgress({
+        ...initialProgress,
+        totalEntries: nextEntries.length,
+        totalBatches:
+          nextEntries.length > 0
+            ? createBatches(nextEntries, { maxLines: normalizedBatchSize, maxChars: 12000 }).length
+            : 0,
+        completedEntries: restoredResults.length,
+      })
+      setRestoreNotice(
+        uiLanguage === 'ko'
+          ? '이전 작업을 브라우저 저장소에서 복구했습니다.'
+          : 'Restored the previous workspace from browser storage.',
+      )
+    } catch {
+      localStorage.removeItem(sessionStorageKey)
+    }
+  }, [normalizedBatchSize, uiLanguage, uploadedFiles.length])
 
   function applyUploadResult(result: Awaited<ReturnType<typeof readUploadedTextFiles>>) {
     let globalIndexStart = 0
@@ -592,6 +787,7 @@ function App() {
     setTranslationStatus('idle')
     setFailedTranslationEntries([])
     setTranslationResults([])
+    setRestoreNotice(null)
   }
 
   async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -685,11 +881,13 @@ function App() {
       setTranslationResults([])
     }
 
-    const result = await runTranslation({
-      entries,
-      batchSize: normalizedBatchSize,
-      concurrency: normalizedConcurrency,
-      signal: abortController.signal,
+      const result = await runTranslation({
+        entries,
+        batchSize: normalizedBatchSize,
+        concurrency: normalizedConcurrency,
+        retryAttempts: normalizedRetryAttempts,
+        splitFailedBatches,
+        signal: abortController.signal,
       translateBatch: (batch) =>
         selectedProvider.translateBatch(batch, providerSettings, abortController.signal),
       onProgress: setTranslationProgress,
@@ -771,6 +969,19 @@ function App() {
     } finally {
       event.currentTarget.value = ''
     }
+  }
+
+  function handleDownloadGlossary() {
+    if (!glossaryText.trim()) {
+      return
+    }
+
+    downloadBlob(
+      'glossary.txt',
+      new Blob([glossaryText], {
+        type: 'text/plain;charset=utf-8',
+      }),
+    )
   }
 
   function downloadBlob(fileName: string, blob: Blob) {
@@ -874,6 +1085,19 @@ function App() {
           <Metric label={t.batches} value={batchCount} />
           <Metric label={t.failed} value={failedTranslationEntries.length} />
         </section>
+
+        {restoreNotice || sessionSavedAt ? (
+          <div className="mb-5 border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
+            {restoreNotice ? <span>{restoreNotice}</span> : null}
+            {sessionSavedAt ? (
+              <span className={restoreNotice ? 'ml-2' : ''}>
+                {uiLanguage === 'ko'
+                  ? `작업 자동 저장: ${sessionSavedAt}`
+                  : `Workspace autosaved: ${sessionSavedAt}`}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
@@ -1014,7 +1238,8 @@ function App() {
                     disabled={
                       localizationEntries.length === 0 ||
                       translationStatus === 'running' ||
-                      sourceLanguage === targetLanguage
+                      sourceLanguage === targetLanguage ||
+                      !canUseExternalApi
                     }
                     className="bg-[#1f2f2a] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#30473f] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -1048,6 +1273,13 @@ function App() {
                 {sourceLanguage === targetLanguage ? (
                   <p className="text-sm text-red-700">{sameLanguageWarning}</p>
                 ) : null}
+                {!canUseExternalApi ? (
+                  <p className="text-sm text-amber-800">
+                    {uiLanguage === 'ko'
+                      ? '외부 API 전송 확인을 체크해야 번역을 시작할 수 있습니다.'
+                      : 'Confirm external API transfer before starting translation.'}
+                  </p>
+                ) : null}
               </div>
             </SectionCard>
           </div>
@@ -1071,6 +1303,7 @@ function App() {
                       setProviderCheckDetail(null)
                       setProviderError(null)
                       setProviderModels([])
+                      setExternalApiConfirmed(nextProviderId === 'ollama')
                     }}
                     className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
                   >
@@ -1135,6 +1368,21 @@ function App() {
                   }
                 >
                   {providerPrivacyText}
+                  {providerId !== 'ollama' ? (
+                    <label className="mt-3 flex items-start gap-2 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        checked={externalApiConfirmed}
+                        onChange={(event) => setExternalApiConfirmed(event.currentTarget.checked)}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        {uiLanguage === 'ko'
+                          ? '번역할 파일 내용이 선택한 외부 API로 전송되는 것을 확인했습니다.'
+                          : 'I understand that file contents will be sent to the selected external API.'}
+                      </span>
+                    </label>
+                  ) : null}
                 </div>
 
                 {providerStatus === 'failed' ? (
@@ -1193,6 +1441,11 @@ function App() {
                     onChange={(event) => setModel(event.currentTarget.value)}
                     className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
                   />
+                  <span className="block text-xs text-slate-500">
+                    {uiLanguage === 'ko'
+                      ? '연결 확인이 실패하면 모델명이 실제 계정/Provider에서 사용 가능한지 확인하세요.'
+                      : 'If connection fails, confirm this model is available for your account and provider.'}
+                  </span>
                 </label>
                 {providerId === 'ollama' ? (
                   <label className="space-y-1 text-sm text-slate-700">
@@ -1268,6 +1521,31 @@ function App() {
                     }}
                     className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
                   />
+                </label>
+                <label className="space-y-1 text-sm text-slate-700">
+                  <span className="block text-xs font-semibold uppercase text-slate-500">
+                    {uiLanguage === 'ko' ? '재시도 횟수' : 'Retry Attempts'}
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={retryAttempts}
+                    onChange={(event) => {
+                      if (!Number.isNaN(event.currentTarget.valueAsNumber)) {
+                        setRetryAttempts(event.currentTarget.valueAsNumber)
+                      }
+                    }}
+                    className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
+                  />
+                </label>
+                <label className="flex items-center gap-3 border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={splitFailedBatches}
+                    onChange={(event) => setSplitFailedBatches(event.currentTarget.checked)}
+                    className="h-4 w-4"
+                  />
+                  {uiLanguage === 'ko' ? '실패한 배치를 나누어 재시도' : 'Split failed batches'}
                 </label>
               </div>
 
@@ -1422,6 +1700,14 @@ function App() {
                   >
                     {uiLanguage === 'ko' ? '예시 넣기' : 'Insert Example'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadGlossary}
+                    disabled={!glossaryText.trim()}
+                    className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#476a5f] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {uiLanguage === 'ko' ? '용어집 저장' : 'Export Glossary'}
+                  </button>
                 </div>
 
                 {showPromptPreview ? (
@@ -1463,7 +1749,11 @@ function App() {
                   onClick={handleDownloadFiles}
                   className="w-full bg-[#1f2f2a] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#30473f] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {t.download}
+                  {translationStatus === 'running'
+                    ? uiLanguage === 'ko'
+                      ? '현재까지 번역된 파일 다운로드'
+                      : 'Download Current Partial Result'
+                    : t.download}
                 </button>
                 <div className="border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-500">
                   {t.failedEntries}: {failedTranslationEntries.length}

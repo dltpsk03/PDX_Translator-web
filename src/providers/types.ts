@@ -51,7 +51,7 @@ export const PROVIDER_OPTIONS: Array<{
   defaultModel: string
 }> = [
   { id: 'ollama', label: 'Local Ollama', defaultModel: 'gemma4:e4b' },
-  { id: 'gemini', label: 'Google Gemini API', defaultModel: 'gemini-2.5-flash' },
-  { id: 'openai', label: 'OpenAI GPT', defaultModel: 'gpt-5.1' },
-  { id: 'claude', label: 'Anthropic Claude', defaultModel: 'claude-sonnet-4-20250514' },
+  { id: 'gemini', label: 'Google Gemini API', defaultModel: 'gemini-3.1-flash-lite' },
+  { id: 'openai', label: 'OpenAI GPT', defaultModel: 'gpt-5.4' },
+  { id: 'claude', label: 'Anthropic Claude', defaultModel: 'claude-sonnet-4-6' },
 ]
