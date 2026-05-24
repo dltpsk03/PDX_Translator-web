@@ -306,14 +306,6 @@ function OllamaInfoPanel({ uiLanguage }: { uiLanguage: UiLanguage }) {
                 </p>
               </div>
               <div className="border border-slate-300 bg-slate-50 p-3">
-                <div className="font-semibold text-slate-950">Google Vertex AI Gemini</div>
-                <p className="mt-1">
-                  {isKorean
-                    ? 'Google Cloud에서 Vertex AI API를 활성화하고 API 키, Project ID, location, 모델명을 입력합니다. 브라우저 직접 호출은 Cloud 설정과 CORS 정책의 영향을 받을 수 있습니다.'
-                    : 'Enable Vertex AI API in Google Cloud, then enter API key, Project ID, location, and model name. Direct browser calls can be affected by Cloud settings and CORS policy.'}
-                </p>
-              </div>
-              <div className="border border-slate-300 bg-slate-50 p-3">
                 <div className="font-semibold text-slate-950">OpenAI GPT</div>
                 <p className="mt-1">
                   {isKorean
@@ -351,7 +343,7 @@ function OllamaInfoPanel({ uiLanguage }: { uiLanguage: UiLanguage }) {
             </div>
             <div>
               <dt className="font-semibold text-slate-500">Batch</dt>
-              <dd className="mt-1 text-slate-950">80 lines, concurrency 2</dd>
+              <dd className="mt-1 text-slate-950">20 lines, concurrency 30</dd>
             </div>
             <div>
               <dt className="font-semibold text-slate-500">Origin</dt>
@@ -380,13 +372,11 @@ function App() {
   const [providerId, setProviderId] = useState<ProviderId>('ollama')
   const [endpoint, setEndpoint] = useState(DEFAULT_OLLAMA_ENDPOINT)
   const [apiKey, setApiKey] = useState('')
-  const [projectId, setProjectId] = useState('')
-  const [location, setLocation] = useState('us-central1')
   const [model, setModel] = useState(DEFAULT_TRANSLATION_MODEL)
   const [sourceLanguage, setSourceLanguage] = useState<ParadoxLanguageCode>('l_english')
   const [targetLanguage, setTargetLanguage] = useState<ParadoxLanguageCode>('l_korean')
-  const [batchSize, setBatchSize] = useState(80)
-  const [concurrency, setConcurrency] = useState(2)
+  const [batchSize, setBatchSize] = useState(20)
+  const [concurrency, setConcurrency] = useState(30)
   const [temperature, setTemperature] = useState(0.1)
   const [translationStatus, setTranslationStatus] = useState<'idle' | 'running' | 'done' | 'failed'>(
     'idle',
@@ -406,8 +396,8 @@ function App() {
   const [showPromptPreview, setShowPromptPreview] = useState(false)
   const totalBytes = uploadedFiles.reduce((sum, file) => sum + file.size, 0)
   const bomCount = uploadedFiles.filter((file) => file.hadBom).length
-  const normalizedBatchSize = Number.isFinite(batchSize) ? batchSize : 80
-  const normalizedConcurrency = Number.isFinite(concurrency) ? concurrency : 2
+  const normalizedBatchSize = Number.isFinite(batchSize) ? batchSize : 20
+  const normalizedConcurrency = Number.isFinite(concurrency) ? concurrency : 30
   const normalizedTemperature = Number.isFinite(temperature) ? temperature : 0.1
   const glossaryEntries = parseGlossary(glossaryText)
   const batchCount =
@@ -434,8 +424,6 @@ function App() {
     provider: providerId,
     endpoint,
     apiKey,
-    projectId,
-    location,
     model,
     temperature: normalizedTemperature,
     topP: 0.9,
@@ -459,8 +447,6 @@ function App() {
       : 'Choose local Ollama or an external LLM with your own API key.'
   const providerLabel = uiLanguage === 'ko' ? '회사 / Provider' : 'Company / Provider'
   const apiKeyLabel = uiLanguage === 'ko' ? 'API 키' : 'API Key'
-  const projectIdLabel = 'Google Cloud Project ID'
-  const locationLabel = uiLanguage === 'ko' ? 'Vertex 위치' : 'Vertex Location'
   const folderDropText =
     uiLanguage === 'ko'
       ? '파일 또는 폴더를 여기로 드래그하거나 클릭해서 선택하세요.'
@@ -1017,38 +1003,13 @@ function App() {
                     />
                   </label>
                 )}
-                {providerId === 'vertex-gemini' ? (
-                  <>
-                    <label className="space-y-1 text-sm text-slate-700">
-                      <span className="block text-xs font-semibold uppercase text-slate-500">
-                        {projectIdLabel}
-                      </span>
-                      <input
-                        value={projectId}
-                        onChange={(event) => setProjectId(event.currentTarget.value)}
-                        className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm text-slate-700">
-                      <span className="block text-xs font-semibold uppercase text-slate-500">
-                        {locationLabel}
-                      </span>
-                      <input
-                        value={location}
-                        onChange={(event) => setLocation(event.currentTarget.value)}
-                        className="w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#476a5f]"
-                      />
-                    </label>
-                  </>
-                ) : null}
                 <label className="space-y-1 text-sm text-slate-700">
                   <span className="block text-xs font-semibold uppercase text-slate-500">
                     {t.batchSize}
                   </span>
                   <input
                     type="number"
-                    min="50"
-                    max="100"
+                    min="1"
                     value={batchSize}
                     onChange={(event) => {
                       if (!Number.isNaN(event.currentTarget.valueAsNumber)) {
@@ -1065,7 +1026,6 @@ function App() {
                   <input
                     type="number"
                     min="1"
-                    max="4"
                     value={concurrency}
                     onChange={(event) => {
                       if (!Number.isNaN(event.currentTarget.valueAsNumber)) {

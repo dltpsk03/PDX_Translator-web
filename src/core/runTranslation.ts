@@ -167,8 +167,8 @@ async function processBatch(
 
 export async function runTranslation({
   entries,
-  batchSize = 80,
-  concurrency = 2,
+  batchSize = 20,
+  concurrency = 30,
   maxChars = 12000,
   translateBatch = defaultTranslateBatch,
   onProgress,

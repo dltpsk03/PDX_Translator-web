@@ -11,6 +11,13 @@ type ClaudeResponse = {
   }
 }
 
+type ClaudeModelResponse = {
+  id?: string
+  error?: {
+    message?: string
+  }
+}
+
 function extractClaudeText(data: ClaudeResponse) {
   const text = data.content
     ?.map((content) => content.text ?? '')
@@ -22,6 +29,15 @@ function extractClaudeText(data: ClaudeResponse) {
   }
 
   return text
+}
+
+async function readClaudeError(response: Response, fallback: string) {
+  try {
+    const data = (await response.json()) as ClaudeResponse | ClaudeModelResponse
+    return data.error?.message ?? fallback
+  } catch {
+    return fallback
+  }
 }
 
 async function createClaudeMessage(prompt: string, settings: Parameters<TranslationProvider['translateBatch']>[1]) {
@@ -43,16 +59,36 @@ async function createClaudeMessage(prompt: string, settings: Parameters<Translat
   })
 
   if (!response.ok) {
-    throw new Error(`Claude returned HTTP ${response.status}.`)
+    throw new Error(await readClaudeError(response, `Claude returned HTTP ${response.status}.`))
   }
 
   return extractClaudeText((await response.json()) as ClaudeResponse)
 }
 
+async function checkClaudeModel(settings: Parameters<TranslationProvider['checkConnection']>[0]) {
+  const response = await fetch(
+    `https://api.anthropic.com/v1/models/${encodeURIComponent(settings.model)}`,
+    {
+      method: 'GET',
+      headers: {
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'x-api-key': settings.apiKey,
+      },
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(await readClaudeError(response, `Claude returned HTTP ${response.status}.`))
+  }
+
+  return (await response.json()) as ClaudeModelResponse
+}
+
 export const claudeProvider: TranslationProvider = {
   id: 'claude',
   label: 'Anthropic Claude',
-  defaultModel: 'claude-sonnet-4-5',
+  defaultModel: 'claude-sonnet-4-20250514',
   requiresApiKey: true,
   async checkConnection(settings) {
     if (!settings.apiKey.trim()) {
@@ -60,12 +96,14 @@ export const claudeProvider: TranslationProvider = {
     }
 
     try {
-      await createClaudeMessage('Return OK only.', {
-        ...settings,
-        temperature: 0,
-      })
+      const model = await checkClaudeModel(settings)
 
-      return { ok: true, label: 'Anthropic Claude', detail: 'Test request completed.' }
+      return {
+        ok: true,
+        label: 'Anthropic Claude',
+        detail: `Model available: ${model.id ?? settings.model}`,
+        models: [model.id ?? settings.model],
+      }
     } catch (error) {
       return {
         ok: false,

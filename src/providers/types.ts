@@ -2,14 +2,12 @@ import type { TranslationBatch } from '../core/createBatches'
 import type { ParadoxLanguageCode } from '../core/paradoxLanguages'
 import type { GlossaryEntry } from '../prompt/parseGlossary'
 
-export type ProviderId = 'ollama' | 'gemini' | 'vertex-gemini' | 'openai' | 'claude'
+export type ProviderId = 'ollama' | 'gemini' | 'openai' | 'claude'
 
 export type ProviderSettings = {
   provider: ProviderId
   endpoint: string
   apiKey: string
-  projectId: string
-  location: string
   model: string
   temperature: number
   topP: number
@@ -50,7 +48,6 @@ export const PROVIDER_OPTIONS: Array<{
 }> = [
   { id: 'ollama', label: 'Local Ollama', defaultModel: 'gemma4:e4b' },
   { id: 'gemini', label: 'Google Gemini API', defaultModel: 'gemini-2.5-flash' },
-  { id: 'vertex-gemini', label: 'Google Vertex AI Gemini', defaultModel: 'gemini-2.5-flash' },
   { id: 'openai', label: 'OpenAI GPT', defaultModel: 'gpt-5.1' },
-  { id: 'claude', label: 'Anthropic Claude', defaultModel: 'claude-sonnet-4-5' },
+  { id: 'claude', label: 'Anthropic Claude', defaultModel: 'claude-sonnet-4-20250514' },
 ]
