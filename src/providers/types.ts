@@ -37,7 +37,11 @@ export type TranslationProvider = {
   label: string
   defaultModel: string
   requiresApiKey: boolean
-  translateBatch: (batch: TranslationBatch, settings: ProviderSettings) => Promise<string>
+  translateBatch: (
+    batch: TranslationBatch,
+    settings: ProviderSettings,
+    signal?: AbortSignal,
+  ) => Promise<string>
   checkConnection: (settings: ProviderSettings) => Promise<ProviderCheckResult>
 }
 

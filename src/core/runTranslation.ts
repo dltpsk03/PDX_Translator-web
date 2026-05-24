@@ -18,6 +18,9 @@ export type TranslationProgress = {
   completedBatches: number
   totalBatches: number
   failedEntries: number
+  activeBatches: number
+  retriedBatches: number
+  recentError: string | null
 }
 
 export type TranslatedEntryResult = {
@@ -34,6 +37,7 @@ export type RunTranslationOptions = {
   concurrency?: number
   maxChars?: number
   translateBatch?: (batch: TranslationBatch) => Promise<string>
+  signal?: AbortSignal
   onProgress?: (progress: TranslationProgress) => void
 }
 
@@ -127,6 +131,7 @@ async function processBatch(
   batch: TranslationBatch,
   translateBatch: (batch: TranslationBatch) => Promise<string>,
   allowSplit: boolean,
+  onRetry?: (message: string) => void,
 ): Promise<TranslatedEntryResult[]> {
   let lastErrors: ValidationError[] = []
 
@@ -139,13 +144,23 @@ async function processBatch(
       }
 
       lastErrors = result.errors
+      if (attempt === 0) {
+        onRetry?.(lastErrors[0]?.message ?? 'Validation failed; retrying batch.')
+      }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
+      }
+
       lastErrors = [
         createFailureError(
           batch,
           error instanceof Error ? error.message : 'Translation request failed.',
         ),
       ]
+      if (attempt === 0) {
+        onRetry?.(lastErrors[0]?.message ?? 'Translation request failed; retrying batch.')
+      }
     }
   }
 
@@ -156,7 +171,9 @@ async function processBatch(
       createBatchFromEntries(batch.batchIndex, batch.entries.slice(midpoint)),
     ]
     const splitResults = await Promise.all(
-      splitBatches.map((splitBatch) => processBatch(splitBatch, translateBatch, false)),
+      splitBatches.map((splitBatch) =>
+        processBatch(splitBatch, translateBatch, false, onRetry),
+      ),
     )
 
     return splitResults.flat()
@@ -171,6 +188,7 @@ export async function runTranslation({
   concurrency = 30,
   maxChars = 12000,
   translateBatch = defaultTranslateBatch,
+  signal,
   onProgress,
 }: RunTranslationOptions): Promise<RunTranslationResult> {
   assertPositiveInteger('batchSize', batchSize)
@@ -188,24 +206,40 @@ export async function runTranslation({
     completedBatches: 0,
     totalBatches: batches.length,
     failedEntries: 0,
+    activeBatches: 0,
+    retriedBatches: 0,
+    recentError: null,
   }
   let nextBatchIndex = 0
 
   onProgress?.({ ...progress })
 
   async function worker() {
-    while (nextBatchIndex < batches.length) {
+    while (nextBatchIndex < batches.length && !signal?.aborted) {
       const batch = batches[nextBatchIndex]
       nextBatchIndex += 1
 
-      const batchResults = await processBatch(batch, translateBatch, true)
-
-      results.push(...batchResults)
-      progress.completedEntries += batch.entries.length
-      progress.completedBatches += 1
-      progress.failedEntries += batchResults.filter((result) => result.failed).length
+      progress.activeBatches += 1
       onProgress?.({ ...progress })
+
+      try {
+        const batchResults = await processBatch(batch, translateBatch, true, (message) => {
+          progress.retriedBatches += 1
+          progress.recentError = message
+          onProgress?.({ ...progress })
+        })
+
+        results.push(...batchResults)
+        progress.completedEntries += batch.entries.length
+        progress.completedBatches += 1
+        progress.failedEntries += batchResults.filter((result) => result.failed).length
+      } finally {
+        progress.activeBatches -= 1
+        onProgress?.({ ...progress })
+      }
     }
+
+    signal?.throwIfAborted()
   }
 
   await Promise.all(

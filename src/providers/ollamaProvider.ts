@@ -25,7 +25,7 @@ export const ollamaProvider: TranslationProvider = {
       models: result.models.map((model) => model.name),
     }
   },
-  translateBatch(batch, settings) {
+  translateBatch(batch, settings, signal) {
     return translateOllamaBatch(batch, {
       endpoint: settings.endpoint,
       model: settings.model,
@@ -37,6 +37,7 @@ export const ollamaProvider: TranslationProvider = {
       targetLanguage: settings.targetLanguage,
       customInstructions: settings.customInstructions,
       glossaryEntries: settings.glossaryEntries,
+      signal,
     })
   },
 }

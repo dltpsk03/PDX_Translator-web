@@ -1,4 +1,4 @@
-import { parseGlossary } from './parseGlossary'
+import { parseGlossary, parseGlossaryWithDiagnostics } from './parseGlossary'
 
 describe('parseGlossary', () => {
   it('parses supported glossary separators and ignores comments', () => {
@@ -17,5 +17,20 @@ describe('parseGlossary', () => {
 
   it('ignores blank lines and malformed entries', () => {
     expect(parseGlossary(['', 'Only source', ' => target', 'source => '].join('\n'))).toEqual([])
+  })
+
+  it('reports malformed and duplicate glossary lines', () => {
+    expect(
+      parseGlossaryWithDiagnostics(
+        ['Empire => 제국', 'Only source', 'Empire = 제국2'].join('\n'),
+      ),
+    ).toEqual({
+      entries: [
+        { source: 'Empire', target: '제국' },
+        { source: 'Empire', target: '제국2' },
+      ],
+      invalidLines: [{ lineNumber: 2, text: 'Only source' }],
+      duplicateSources: ['Empire'],
+    })
   })
 })

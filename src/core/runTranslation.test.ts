@@ -131,6 +131,9 @@ describe('runTranslation', () => {
       completedBatches: 0,
       totalBatches: 2,
       failedEntries: 0,
+      activeBatches: 0,
+      retriedBatches: 0,
+      recentError: null,
     })
     expect(progress).toHaveBeenLastCalledWith({
       completedEntries: 2,
@@ -138,6 +141,9 @@ describe('runTranslation', () => {
       completedBatches: 2,
       totalBatches: 2,
       failedEntries: 0,
+      activeBatches: 0,
+      retriedBatches: 0,
+      recentError: null,
     })
   })
 })

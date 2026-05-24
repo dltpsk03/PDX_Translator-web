@@ -27,6 +27,15 @@ function extractGeminiText(data: GeminiResponse) {
   return text
 }
 
+async function readGeminiError(response: Response) {
+  try {
+    const data = (await response.json()) as GeminiResponse
+    return data.error?.message ?? `Gemini returned HTTP ${response.status}.`
+  } catch {
+    return `Gemini returned HTTP ${response.status}.`
+  }
+}
+
 export const geminiProvider: TranslationProvider = {
   id: 'gemini',
   label: 'Google Gemini API',
@@ -62,7 +71,7 @@ export const geminiProvider: TranslationProvider = {
         return {
           ok: false,
           label: 'Google Gemini API',
-          error: `Gemini returned HTTP ${response.status}.`,
+          error: await readGeminiError(response),
         }
       }
 
@@ -75,13 +84,14 @@ export const geminiProvider: TranslationProvider = {
       }
     }
   },
-  async translateBatch(batch, settings) {
+  async translateBatch(batch, settings, signal) {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
         settings.model,
       )}:generateContent`,
       {
         method: 'POST',
+        signal,
         headers: {
           'Content-Type': 'application/json',
           'x-goog-api-key': settings.apiKey,
@@ -111,7 +121,7 @@ export const geminiProvider: TranslationProvider = {
     )
 
     if (!response.ok) {
-      throw new Error(`Gemini returned HTTP ${response.status}.`)
+      throw new Error(await readGeminiError(response))
     }
 
     return extractGeminiText((await response.json()) as GeminiResponse)

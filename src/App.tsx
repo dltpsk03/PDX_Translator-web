@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import { useState, type ChangeEvent, type DragEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 
 import { SectionCard } from './components/SectionCard'
 import { createBatches } from './core/createBatches'
@@ -23,7 +23,7 @@ import {
 import { DEFAULT_OLLAMA_ENDPOINT } from './ollama/checkOllama'
 import { DEFAULT_TRANSLATION_MODEL } from './ollama/translateBatch'
 import { buildPrompt } from './ollama/buildPrompt'
-import { parseGlossary } from './prompt/parseGlossary'
+import { parseGlossaryWithDiagnostics } from './prompt/parseGlossary'
 import {
   getTranslationProvider,
   PROVIDER_OPTIONS,
@@ -165,6 +165,9 @@ const initialProgress: TranslationProgress = {
   completedBatches: 0,
   totalBatches: 0,
   failedEntries: 0,
+  activeBatches: 0,
+  retriedBatches: 0,
+  recentError: null,
 }
 
 function formatBytes(bytes: number) {
@@ -186,6 +189,40 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       <div className="mt-1 text-xl font-semibold text-slate-950">{value}</div>
     </div>
   )
+}
+
+function describeConnectionError(error: string) {
+  const normalizedError = error.toLowerCase()
+
+  if (normalizedError.includes('cors') || normalizedError.includes('failed to fetch')) {
+    return `${error} Check browser CORS access, endpoint URL, or provider browser-access settings.`
+  }
+
+  if (
+    normalizedError.includes('api key') ||
+    normalizedError.includes('unauthorized') ||
+    normalizedError.includes('401')
+  ) {
+    return `${error} Check that the API key is present and has access to this provider.`
+  }
+
+  if (
+    normalizedError.includes('model') ||
+    normalizedError.includes('not found') ||
+    normalizedError.includes('404')
+  ) {
+    return `${error} Check the selected model name.`
+  }
+
+  if (
+    normalizedError.includes('rate') ||
+    normalizedError.includes('quota') ||
+    normalizedError.includes('429')
+  ) {
+    return `${error} Lower concurrency or wait for the provider rate limit to reset.`
+  }
+
+  return error
 }
 
 function OllamaInfoPanel({ uiLanguage }: { uiLanguage: UiLanguage }) {
@@ -378,9 +415,9 @@ function App() {
   const [batchSize, setBatchSize] = useState(20)
   const [concurrency, setConcurrency] = useState(30)
   const [temperature, setTemperature] = useState(0.1)
-  const [translationStatus, setTranslationStatus] = useState<'idle' | 'running' | 'done' | 'failed'>(
-    'idle',
-  )
+  const [translationStatus, setTranslationStatus] = useState<
+    'idle' | 'running' | 'done' | 'failed' | 'stopped'
+  >('idle')
   const [translationProgress, setTranslationProgress] =
     useState<TranslationProgress>(initialProgress)
   const [translationError, setTranslationError] = useState<string | null>(null)
@@ -393,13 +430,17 @@ function App() {
   const [isDragActive, setIsDragActive] = useState(false)
   const [customInstructions, setCustomInstructions] = useState('')
   const [glossaryText, setGlossaryText] = useState('')
+  const [glossaryFileName, setGlossaryFileName] = useState<string | null>(null)
   const [showPromptPreview, setShowPromptPreview] = useState(false)
+  const [translationStartedAt, setTranslationStartedAt] = useState<number | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const totalBytes = uploadedFiles.reduce((sum, file) => sum + file.size, 0)
   const bomCount = uploadedFiles.filter((file) => file.hadBom).length
   const normalizedBatchSize = Number.isFinite(batchSize) ? batchSize : 20
   const normalizedConcurrency = Number.isFinite(concurrency) ? concurrency : 30
   const normalizedTemperature = Number.isFinite(temperature) ? temperature : 0.1
-  const glossaryEntries = parseGlossary(glossaryText)
+  const glossaryDiagnostics = parseGlossaryWithDiagnostics(glossaryText)
+  const glossaryEntries = glossaryDiagnostics.entries
   const batchCount =
     localizationEntries.length > 0
       ? createBatches(localizationEntries, {
@@ -411,6 +452,22 @@ function App() {
     translationProgress.totalEntries > 0
       ? Math.round((translationProgress.completedEntries / translationProgress.totalEntries) * 100)
       : 0
+  const elapsedSeconds =
+    translationStartedAt && translationProgress.completedEntries > 0
+      ? Math.max(1, Math.round((Date.now() - translationStartedAt) / 1000))
+      : 0
+  const entriesPerMinute =
+    elapsedSeconds > 0
+      ? Math.round((translationProgress.completedEntries / elapsedSeconds) * 60)
+      : 0
+  const remainingEntries = Math.max(
+    0,
+    translationProgress.totalEntries - translationProgress.completedEntries,
+  )
+  const etaMinutes =
+    entriesPerMinute > 0 ? Math.ceil(remainingEntries / entriesPerMinute) : null
+  const successfulEntries = translationResults.filter((result) => !result.failed).length
+  const originalKeptEntries = translationResults.filter((result) => result.failed).length
   const selectedProvider = getTranslationProvider(providerId)
   const statusLabel =
     providerStatus === 'connected'
@@ -463,6 +520,22 @@ function App() {
       : uiLanguage === 'ko'
         ? '외부 API 사용 시 번역할 파일 내용이 선택한 provider로 전송되며 요금이 발생할 수 있습니다.'
         : 'External APIs receive the text being translated and may incur usage costs.'
+  const providerSetupText =
+    providerId === 'ollama'
+      ? uiLanguage === 'ko'
+        ? '로컬 Ollama는 PC 성능에 따라 동시 요청을 조정하세요. 실패가 늘면 동시 요청을 낮추는 것이 좋습니다.'
+        : 'Tune concurrency for your local PC. If failures increase, lower the concurrent request count.'
+      : providerId === 'claude'
+        ? uiLanguage === 'ko'
+          ? 'Claude는 Anthropic API 키와 전체 모델 ID가 필요합니다. 예: claude-sonnet-4-20250514'
+          : 'Claude requires an Anthropic API key and full model ID, for example claude-sonnet-4-20250514.'
+        : providerId === 'openai'
+          ? uiLanguage === 'ko'
+            ? 'OpenAI는 Responses API를 사용합니다. 모델명과 API 키 권한을 확인하세요.'
+            : 'OpenAI uses the Responses API. Confirm the model name and API key permissions.'
+          : uiLanguage === 'ko'
+            ? 'Gemini는 Google AI Studio API 키를 사용합니다. 브라우저 호출이 차단되면 provider 오류로 표시됩니다.'
+            : 'Gemini uses a Google AI Studio API key. Browser access issues appear as provider errors.'
   const promptTitle = uiLanguage === 'ko' ? '프롬프트 / 용어집' : 'Prompt / Glossary'
   const promptDesc =
     uiLanguage === 'ko'
@@ -583,7 +656,55 @@ function App() {
     }
 
     setProviderStatus('failed')
-    setProviderError(result.error)
+    setProviderError(describeConnectionError(result.error))
+  }
+
+  function mergeTranslationResults(
+    currentResults: TranslatedEntryResult[],
+    nextResults: TranslatedEntryResult[],
+  ) {
+    const resultMap = new Map(
+      currentResults.map((result) => [result.entry.globalIndex, result]),
+    )
+
+    for (const result of nextResults) {
+      resultMap.set(result.entry.globalIndex, result)
+    }
+
+    return [...resultMap.values()].toSorted((a, b) => a.entry.globalIndex - b.entry.globalIndex)
+  }
+
+  async function runTranslationForEntries(entries: LocalizationEntry[], retryOnly = false) {
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    setTranslationStartedAt(Date.now())
+    setTranslationStatus('running')
+    setTranslationError(null)
+    if (!retryOnly) {
+      setFailedTranslationEntries([])
+      setTranslationResults([])
+    }
+
+    const result = await runTranslation({
+      entries,
+      batchSize: normalizedBatchSize,
+      concurrency: normalizedConcurrency,
+      signal: abortController.signal,
+      translateBatch: (batch) =>
+        selectedProvider.translateBatch(batch, providerSettings, abortController.signal),
+      onProgress: setTranslationProgress,
+    })
+
+    const mergedResults = retryOnly
+      ? mergeTranslationResults(translationResults, result.results)
+      : result.results
+    const mergedFailedEntries = mergedResults.filter((mergedResult) => mergedResult.failed)
+
+    setTranslationProgress(result.progress)
+    setTranslationResults(mergedResults)
+    setFailedTranslationEntries(mergedFailedEntries)
+    setTranslationStatus('done')
+    abortControllerRef.current = null
   }
 
   async function handleStartTranslation() {
@@ -591,26 +712,64 @@ function App() {
       return
     }
 
-    setTranslationStatus('running')
-    setTranslationError(null)
-    setFailedTranslationEntries([])
-
     try {
-      const result = await runTranslation({
-        entries: localizationEntries,
-        batchSize: normalizedBatchSize,
-        concurrency: normalizedConcurrency,
-        translateBatch: (batch) => selectedProvider.translateBatch(batch, providerSettings),
-        onProgress: setTranslationProgress,
-      })
-
-      setTranslationProgress(result.progress)
-      setTranslationResults(result.results)
-      setFailedTranslationEntries(result.failedEntries)
-      setTranslationStatus('done')
+      await runTranslationForEntries(localizationEntries)
     } catch (error) {
+      abortControllerRef.current = null
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setTranslationStatus('stopped')
+        return
+      }
+
       setTranslationStatus('failed')
       setTranslationError(error instanceof Error ? error.message : 'Translation failed.')
+    }
+  }
+
+  async function handleRetryFailedEntries() {
+    if (failedTranslationEntries.length === 0 || translationStatus === 'running') {
+      return
+    }
+
+    try {
+      await runTranslationForEntries(
+        failedTranslationEntries.map((failedEntry) => failedEntry.entry),
+        true,
+      )
+    } catch (error) {
+      abortControllerRef.current = null
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setTranslationStatus('stopped')
+        return
+      }
+
+      setTranslationStatus('failed')
+      setTranslationError(error instanceof Error ? error.message : 'Retry failed.')
+    }
+  }
+
+  function handleStopTranslation() {
+    abortControllerRef.current?.abort()
+  }
+
+  function handleKeepOriginalsForFailedEntries() {
+    setFailedTranslationEntries([])
+    setTranslationStatus('done')
+  }
+
+  async function handleGlossaryUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    try {
+      const text = await file.text()
+      setGlossaryFileName(file.name)
+      setGlossaryText((current) => [current.trim(), text.trim()].filter(Boolean).join('\n'))
+    } finally {
+      event.currentTarget.value = ''
     }
   }
 
@@ -804,11 +963,15 @@ function App() {
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <Metric
                     label={t.entries}
-                    value={`${translationProgress.completedEntries} / ${localizationEntries.length}`}
+                    value={`${translationProgress.completedEntries} / ${
+                      translationProgress.totalEntries || localizationEntries.length
+                    }`}
                   />
                   <Metric
                     label={t.batches}
-                    value={`${translationProgress.completedBatches} / ${batchCount}`}
+                    value={`${translationProgress.completedBatches} / ${
+                      translationProgress.totalBatches || batchCount
+                    }`}
                   />
                   <Metric
                     label={t.failed}
@@ -816,22 +979,62 @@ function App() {
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleStartTranslation}
-                  disabled={
-                    localizationEntries.length === 0 ||
-                    translationStatus === 'running' ||
-                    sourceLanguage === targetLanguage
-                  }
-                  className="w-full bg-[#1f2f2a] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#30473f] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {translationStatus === 'running' ? t.translating : t.startTranslation}
-                </button>
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <Metric
+                    label={uiLanguage === 'ko' ? '처리 중' : 'Active'}
+                    value={translationProgress.activeBatches}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '재시도' : 'Retries'}
+                    value={translationProgress.retriedBatches}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '속도' : 'Speed'}
+                    value={entriesPerMinute ? `${entriesPerMinute}/min` : '-'}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '남은 시간' : 'ETA'}
+                    value={etaMinutes === null ? '-' : `${etaMinutes}m`}
+                  />
+                </div>
+
+                {translationProgress.recentError ? (
+                  <div className="border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                    <span className="font-semibold">
+                      {uiLanguage === 'ko' ? '최근 재시도 사유' : 'Latest retry reason'}:
+                    </span>{' '}
+                    {translationProgress.recentError}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleStartTranslation}
+                    disabled={
+                      localizationEntries.length === 0 ||
+                      translationStatus === 'running' ||
+                      sourceLanguage === targetLanguage
+                    }
+                    className="bg-[#1f2f2a] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#30473f] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {translationStatus === 'running' ? t.translating : t.startTranslation}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStopTranslation}
+                    disabled={translationStatus !== 'running'}
+                    className="border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-[#476a5f] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {uiLanguage === 'ko' ? '중단' : 'Stop'}
+                  </button>
+                </div>
 
                 <div className="border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600">
                   {translationStatus === 'done'
                     ? t.finished
+                    : translationStatus === 'stopped'
+                      ? t.stopped
                     : translationStatus === 'failed'
                       ? t.stopped
                       : localizationEntries.length > 0
@@ -902,6 +1105,13 @@ function App() {
                   <Metric label={t.models} value={providerModels.length || 'Manual'} />
                 </div>
 
+                <div className="border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700">
+                  <div className="text-xs font-semibold uppercase text-slate-500">
+                    {uiLanguage === 'ko' ? 'Provider 설정' : 'Provider Setup'}
+                  </div>
+                  <p className="mt-1">{providerSetupText}</p>
+                </div>
+
                 {providerModels.length > 0 ? (
                   <div className="border border-slate-300 bg-white p-3">
                     <p className="text-xs font-semibold uppercase text-slate-500">
@@ -917,7 +1127,13 @@ function App() {
                   </div>
                 ) : null}
 
-                <div className="border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                <div
+                  className={
+                    providerId === 'ollama'
+                      ? 'border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700'
+                      : 'border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900'
+                  }
+                >
                   {providerPrivacyText}
                 </div>
 
@@ -1086,6 +1302,17 @@ function App() {
                   <span className="block text-xs font-semibold uppercase text-slate-500">
                     {uiLanguage === 'ko' ? '용어집' : 'Glossary'}
                   </span>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <input
+                      type="file"
+                      accept=".txt,text/plain"
+                      onChange={handleGlossaryUpload}
+                      className="w-full border border-slate-300 bg-white px-3 py-2 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-sm file:font-semibold file:text-slate-700 focus:border-[#476a5f]"
+                    />
+                    {glossaryFileName ? (
+                      <span className="text-xs text-slate-500">{glossaryFileName}</span>
+                    ) : null}
+                  </div>
                   <textarea
                     value={glossaryText}
                     onChange={(event) => setGlossaryText(event.currentTarget.value)}
@@ -1099,10 +1326,18 @@ function App() {
                   />
                 </label>
 
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                   <Metric
                     label={uiLanguage === 'ko' ? '용어 수' : 'Terms'}
                     value={glossaryEntries.length}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '형식 오류' : 'Invalid'}
+                    value={glossaryDiagnostics.invalidLines.length}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '중복' : 'Duplicates'}
+                    value={glossaryDiagnostics.duplicateSources.length}
                   />
                   <button
                     type="button"
@@ -1119,12 +1354,56 @@ function App() {
                   </button>
                 </div>
 
+                {glossaryEntries.length > 0 ? (
+                  <div className="max-h-36 overflow-auto border border-slate-300 bg-white p-3 text-sm">
+                    <div className="mb-2 text-xs font-semibold uppercase text-slate-500">
+                      {uiLanguage === 'ko' ? '용어집 미리보기' : 'Glossary Preview'}
+                    </div>
+                    <div className="grid gap-1">
+                      {glossaryEntries.slice(0, 8).map((entry) => (
+                        <div
+                          key={`${entry.source}-${entry.target}`}
+                          className="grid grid-cols-[1fr_auto_1fr] gap-2 border-b border-slate-100 py-1 last:border-b-0"
+                        >
+                          <span className="break-words font-medium text-slate-900">
+                            {entry.source}
+                          </span>
+                          <span className="text-slate-400">=</span>
+                          <span className="break-words text-slate-700">{entry.target}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {glossaryDiagnostics.invalidLines.length > 0 ||
+                glossaryDiagnostics.duplicateSources.length > 0 ? (
+                  <div className="border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                    {glossaryDiagnostics.invalidLines.length > 0 ? (
+                      <p>
+                        {uiLanguage === 'ko' ? '무시된 줄' : 'Ignored lines'}:{' '}
+                        {glossaryDiagnostics.invalidLines
+                          .slice(0, 3)
+                          .map((line) => line.lineNumber)
+                          .join(', ')}
+                      </p>
+                    ) : null}
+                    {glossaryDiagnostics.duplicateSources.length > 0 ? (
+                      <p className="mt-1">
+                        {uiLanguage === 'ko' ? '중복 원문' : 'Duplicate sources'}:{' '}
+                        {glossaryDiagnostics.duplicateSources.slice(0, 3).join(', ')}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setCustomInstructions('')
                       setGlossaryText('')
+                      setGlossaryFileName(null)
                     }}
                     className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#476a5f]"
                   >
@@ -1155,6 +1434,20 @@ function App() {
 
             <SectionCard title={t.resultDownload} description={t.resultDesc}>
               <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <Metric
+                    label={uiLanguage === 'ko' ? '번역됨' : 'Translated'}
+                    value={successfulEntries}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '원문 유지' : 'Original'}
+                    value={originalKeptEntries}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '총 항목' : 'Total'}
+                    value={translationResults.length}
+                  />
+                </div>
                 <label className="flex items-center gap-3 border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
                   <input
                     type="checkbox"
@@ -1174,7 +1467,34 @@ function App() {
                 </button>
                 <div className="border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-500">
                   {t.failedEntries}: {failedTranslationEntries.length}
+                  {translationResults.length > 0 ? (
+                    <span className="ml-2">
+                      {uiLanguage === 'ko'
+                        ? `다운로드 시 ${originalKeptEntries}개 항목은 원문으로 유지됩니다.`
+                        : `${originalKeptEntries} entries will stay original when downloaded.`}
+                    </span>
+                  ) : null}
                 </div>
+                {failedTranslationEntries.length > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleRetryFailedEntries}
+                      disabled={translationStatus === 'running'}
+                      className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:border-[#476a5f] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {uiLanguage === 'ko' ? '실패 항목만 재시도' : 'Retry Failed Only'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleKeepOriginalsForFailedEntries}
+                      disabled={translationStatus === 'running'}
+                      className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:border-[#476a5f] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {uiLanguage === 'ko' ? '실패 항목 원문 유지' : 'Keep Failed Originals'}
+                    </button>
+                  </div>
+                ) : null}
                 {failedTranslationEntries.length > 0 ? (
                   <ul className="max-h-40 space-y-2 overflow-auto border border-red-200 bg-red-50 p-3 text-sm text-red-900">
                     {failedTranslationEntries.map((failedEntry) => (

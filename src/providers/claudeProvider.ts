@@ -40,9 +40,14 @@ async function readClaudeError(response: Response, fallback: string) {
   }
 }
 
-async function createClaudeMessage(prompt: string, settings: Parameters<TranslationProvider['translateBatch']>[1]) {
+async function createClaudeMessage(
+  prompt: string,
+  settings: Parameters<TranslationProvider['translateBatch']>[1],
+  signal?: AbortSignal,
+) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       'anthropic-version': '2023-06-01',
@@ -112,7 +117,7 @@ export const claudeProvider: TranslationProvider = {
       }
     }
   },
-  translateBatch(batch, settings) {
+  translateBatch(batch, settings, signal) {
     return createClaudeMessage(
       buildPrompt(batch, {
         sourceLanguage: settings.sourceLanguage,
@@ -121,6 +126,7 @@ export const claudeProvider: TranslationProvider = {
         glossaryEntries: settings.glossaryEntries,
       }),
       settings,
+      signal,
     )
   },
 }

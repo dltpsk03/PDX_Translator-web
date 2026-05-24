@@ -32,9 +32,23 @@ function extractOpenAIText(data: OpenAIResponse) {
   return text
 }
 
-async function createOpenAIResponse(prompt: string, settings: Parameters<TranslationProvider['translateBatch']>[1]) {
+async function readOpenAIError(response: Response) {
+  try {
+    const data = (await response.json()) as OpenAIResponse
+    return data.error?.message ?? `OpenAI returned HTTP ${response.status}.`
+  } catch {
+    return `OpenAI returned HTTP ${response.status}.`
+  }
+}
+
+async function createOpenAIResponse(
+  prompt: string,
+  settings: Parameters<TranslationProvider['translateBatch']>[1],
+  signal?: AbortSignal,
+) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
+    signal,
     headers: {
       Authorization: `Bearer ${settings.apiKey}`,
       'Content-Type': 'application/json',
@@ -48,7 +62,7 @@ async function createOpenAIResponse(prompt: string, settings: Parameters<Transla
   })
 
   if (!response.ok) {
-    throw new Error(`OpenAI returned HTTP ${response.status}.`)
+    throw new Error(await readOpenAIError(response))
   }
 
   return extractOpenAIText((await response.json()) as OpenAIResponse)
@@ -79,7 +93,7 @@ export const openaiProvider: TranslationProvider = {
       }
     }
   },
-  translateBatch(batch, settings) {
+  translateBatch(batch, settings, signal) {
     return createOpenAIResponse(
       buildPrompt(batch, {
         sourceLanguage: settings.sourceLanguage,
@@ -88,6 +102,7 @@ export const openaiProvider: TranslationProvider = {
         glossaryEntries: settings.glossaryEntries,
       }),
       settings,
+      signal,
     )
   },
 }

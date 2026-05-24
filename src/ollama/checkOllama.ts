@@ -25,6 +25,7 @@ type OllamaTagsResponse = {
     modified_at?: string
     size?: number
   }>
+  error?: string
 }
 
 function normalizeEndpoint(endpoint: string) {
@@ -45,10 +46,18 @@ export async function checkOllama(
     })
 
     if (!response.ok) {
+      let message = `Ollama returned HTTP ${response.status}.`
+      try {
+        const data = (await response.json()) as OllamaTagsResponse
+        message = data.error ?? message
+      } catch {
+        // Keep HTTP status if Ollama did not return JSON.
+      }
+
       return {
         ok: false,
         endpoint: normalizedEndpoint,
-        error: `Ollama returned HTTP ${response.status}.`,
+        error: message,
       }
     }
 

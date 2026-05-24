@@ -17,10 +17,12 @@ export type TranslateBatchOptions = {
   targetLanguage?: ParadoxLanguageCode
   customInstructions?: string
   glossaryEntries?: GlossaryEntry[]
+  signal?: AbortSignal
 }
 
 type OllamaGenerateResponse = {
   response?: string
+  error?: string
 }
 
 function normalizeEndpoint(endpoint: string) {
@@ -40,6 +42,7 @@ export async function translateBatch(
     targetLanguage = 'l_korean',
     customInstructions = '',
     glossaryEntries = [],
+    signal,
   }: TranslateBatchOptions = {},
 ) {
   const normalizedEndpoint = normalizeEndpoint(endpoint)
@@ -49,6 +52,7 @@ export async function translateBatch(
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
+    signal,
     body: JSON.stringify({
       model,
       prompt: buildPrompt(batch, {
@@ -69,7 +73,14 @@ export async function translateBatch(
   })
 
   if (!response.ok) {
-    throw new Error(`Ollama returned HTTP ${response.status}.`)
+    let message = `Ollama returned HTTP ${response.status}.`
+    try {
+      const data = (await response.json()) as OllamaGenerateResponse
+      message = data.error ?? message
+    } catch {
+      // Keep HTTP status if Ollama did not return a JSON error body.
+    }
+    throw new Error(message)
   }
 
   const data = (await response.json()) as OllamaGenerateResponse
