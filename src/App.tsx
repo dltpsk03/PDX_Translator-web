@@ -491,6 +491,7 @@ function App() {
   const [glossaryFileName, setGlossaryFileName] = useState<string | null>(null)
   const [showPromptPreview, setShowPromptPreview] = useState(false)
   const [translationStartedAt, setTranslationStartedAt] = useState<number | null>(null)
+  const [translationFinishedAt, setTranslationFinishedAt] = useState<number | null>(null)
   const [externalApiConfirmed, setExternalApiConfirmed] = useState(false)
   const [restoreNotice, setRestoreNotice] = useState<string | null>(null)
   const [sessionSavedAt, setSessionSavedAt] = useState<string | null>(null)
@@ -515,8 +516,11 @@ function App() {
       ? Math.round((translationProgress.completedEntries / translationProgress.totalEntries) * 100)
       : 0
   const elapsedSeconds =
-    translationStartedAt && translationProgress.completedEntries > 0
-      ? Math.max(1, Math.round((Date.now() - translationStartedAt) / 1000))
+    translationStartedAt && (translationProgress.completedEntries > 0 || translationStatus === 'running')
+      ? Math.max(
+          1,
+          Math.round(((translationFinishedAt ?? Date.now()) - translationStartedAt) / 1000),
+        )
       : 0
   const entriesPerMinute =
     elapsedSeconds > 0
@@ -528,6 +532,10 @@ function App() {
   )
   const etaMinutes =
     entriesPerMinute > 0 ? Math.ceil(remainingEntries / entriesPerMinute) : null
+  const elapsedTimeText =
+    elapsedSeconds > 0
+      ? `${Math.floor(elapsedSeconds / 60)}m ${String(elapsedSeconds % 60).padStart(2, '0')}s`
+      : '-'
   const successfulEntries = translationResults.filter((result) => !result.failed).length
   const originalKeptEntries = translationResults.filter((result) => result.failed).length
   const translationResultMap = createTranslationResultMap(translationResults)
@@ -947,6 +955,7 @@ function App() {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
     setTranslationStartedAt(Date.now())
+    setTranslationFinishedAt(null)
     setTranslationStatus('running')
     setTranslationError(null)
     if (!retryOnly) {
@@ -975,6 +984,7 @@ function App() {
     setTranslationResults(mergedResults)
     setFailedTranslationEntries(mergedFailedEntries)
     setTranslationStatus('done')
+    setTranslationFinishedAt(Date.now())
     abortControllerRef.current = null
   }
 
@@ -989,6 +999,7 @@ function App() {
       abortControllerRef.current = null
       if (error instanceof DOMException && error.name === 'AbortError') {
         setTranslationStatus('stopped')
+        setTranslationFinishedAt(Date.now())
         return
       }
 
@@ -1011,6 +1022,7 @@ function App() {
       abortControllerRef.current = null
       if (error instanceof DOMException && error.name === 'AbortError') {
         setTranslationStatus('stopped')
+        setTranslationFinishedAt(Date.now())
         return
       }
 
@@ -1428,7 +1440,7 @@ function App() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
                   <Metric
                     label={uiLanguage === 'ko' ? '처리 중' : 'Active'}
                     value={translationProgress.activeBatches}
@@ -1444,6 +1456,10 @@ function App() {
                   <Metric
                     label={uiLanguage === 'ko' ? '남은 시간' : 'ETA'}
                     value={etaMinutes === null ? '-' : `${etaMinutes}m`}
+                  />
+                  <Metric
+                    label={uiLanguage === 'ko' ? '소요 시간' : 'Elapsed'}
+                    value={elapsedTimeText}
                   />
                 </div>
 
@@ -1988,6 +2004,12 @@ function App() {
                     label={uiLanguage === 'ko' ? '총 항목' : 'Total'}
                     value={translationResults.length}
                   />
+                </div>
+                <div className="border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                  <span className="font-semibold">
+                    {uiLanguage === 'ko' ? '번역 소요 시간' : 'Translation time'}:
+                  </span>{' '}
+                  {elapsedTimeText}
                 </div>
                 <label className="flex items-center gap-3 border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
                   <input
