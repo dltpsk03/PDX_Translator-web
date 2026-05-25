@@ -1240,7 +1240,7 @@ function App() {
           }
         >
           <div className="space-y-4">
-            {activeStep === 'prepare' ? (
+            {activeStep === 'runResult' ? (
             <SectionCard title={t.fileUpload} description={t.fileUploadDesc}>
               <div className="space-y-4">
                 <label
