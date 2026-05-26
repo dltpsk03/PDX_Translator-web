@@ -24,7 +24,7 @@ describe('validateTranslatedBatch', () => {
 
     const result = validateTranslatedBatch(
       batch,
-      [' title:0 "위험한 제안"', ' desc:0 "<P0> 도착했다<P1><P2>"'].join('\n'),
+      [' title:0 "위험한 제안"', ' desc:0 "<P0> 도착했다<P1><P2> 좋음 <P3>"'].join('\n'),
     )
 
     expect(result).toEqual({
@@ -237,7 +237,11 @@ describe('validateTranslatedBatch', () => {
       'raw_placeholder_leaked',
       'raw_placeholder_leaked',
       'raw_placeholder_leaked',
+      'placeholder_missing',
       'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+      'placeholder_missing',
       'raw_placeholder_leaked',
       'raw_placeholder_leaked',
     ])
@@ -247,6 +251,28 @@ describe('validateTranslatedBatch', () => {
     const batch = batchFrom(' title:0 "A Dangerous Proposal"')
 
     const result = validateTranslatedBatch(batch, ' title:0 "A Dangerous Proposal"')
+
+    expect(result.errors).toEqual([
+      {
+        code: 'untranslated_value',
+        batchIndex: 0,
+        lineIndex: 0,
+        globalIndex: 0,
+        resultLineIndex: 0,
+        message: 'Line 1 still matches the original source text.',
+      },
+    ])
+  })
+
+  it('reports unchanged lore text inside protected style markers', () => {
+    const batch = batchFrom(
+      ' ideology_monopolist_leader_desc:0 "#lore This leader views free-market competition as chaotic and wasteful.#!"',
+    )
+
+    const result = validateTranslatedBatch(
+      batch,
+      ' ideology_monopolist_leader_desc:0 "<P0> This leader views free-market competition as chaotic and wasteful.<P1>"',
+    )
 
     expect(result.errors).toEqual([
       {
@@ -277,6 +303,17 @@ describe('validateTranslatedBatch', () => {
         ` officers_loyalists: "<P0> <P1>"`,
       ].join('\n'),
     )
+
+    expect(result).toEqual({
+      ok: true,
+      errors: [],
+    })
+  })
+
+  it('accepts unchanged values when the source contains only escaped newline markers', () => {
+    const batch = batchFrom(' spacer:0 "\\n"')
+
+    const result = validateTranslatedBatch(batch, ' spacer:0 "<P0>"')
 
     expect(result).toEqual({
       ok: true,

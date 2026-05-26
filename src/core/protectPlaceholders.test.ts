@@ -45,23 +45,38 @@ describe('protectPlaceholders', () => {
     ])
   })
 
-  it('protects positive and negative formatting blocks', () => {
+  it('protects style markers without hiding text inside them', () => {
     const result = protectPlaceholders('#P positive text #! and #N negative text #!')
 
-    expect(result.text).toBe('<P0> and <P1>')
+    expect(result.text).toBe('<P0> positive text <P1> and <P2> negative text <P3>')
     expect(result.placeholders).toEqual([
-      { token: '<P0>', value: '#P positive text #!' },
-      { token: '<P1>', value: '#N negative text #!' },
+      { token: '<P0>', value: '#P' },
+      { token: '<P1>', value: '#!' },
+      { token: '<P2>', value: '#N' },
+      { token: '<P3>', value: '#!' },
     ])
   })
 
   it('protects general Paradox style blocks and at-sign icons', () => {
     const result = protectPlaceholders('#v highlighted value #! costs @money!')
 
-    expect(result.text).toBe('<P0> costs <P1>')
+    expect(result.text).toBe('<P0> highlighted value <P1> costs <P2>')
     expect(result.placeholders).toEqual([
-      { token: '<P0>', value: '#v highlighted value #!' },
-      { token: '<P1>', value: '@money!' },
+      { token: '<P0>', value: '#v' },
+      { token: '<P1>', value: '#!' },
+      { token: '<P2>', value: '@money!' },
+    ])
+  })
+
+  it('leaves lore text translatable while protecting lore markers', () => {
+    const source = '#lore This leader views free-market competition as chaotic.#!'
+
+    const result = protectPlaceholders(source)
+
+    expect(result.text).toBe('<P0> This leader views free-market competition as chaotic.<P1>')
+    expect(result.placeholders).toEqual([
+      { token: '<P0>', value: '#lore' },
+      { token: '<P1>', value: '#!' },
     ])
   })
 
@@ -80,24 +95,26 @@ describe('protectPlaceholders', () => {
 
     const result = protectPlaceholders(source)
 
-    expect(result.text).toBe('<P0> spends <P1><P2><P3> for <P4> and <P5>')
+    expect(result.text).toBe('<P0> spends <P1><P2><P3> Good <P4> for <P5> and <P6> Bad <P7>')
     expect(result.placeholders).toEqual([
       { token: '<P0>', value: '[This.GetName]' },
       { token: '<P1>', value: '£gold£' },
       { token: '<P2>', value: '\\n' },
-      { token: '<P3>', value: '#P Good #!' },
-      { token: '<P4>', value: '$COUNTRY_NAME$' },
-      { token: '<P5>', value: '#N Bad #!' },
+      { token: '<P3>', value: '#P' },
+      { token: '<P4>', value: '#!' },
+      { token: '<P5>', value: '$COUNTRY_NAME$' },
+      { token: '<P6>', value: '#N' },
+      { token: '<P7>', value: '#!' },
     ])
   })
 
   it('restores protected placeholders exactly after translation', () => {
     const source = '[ROOT.GetCountry.GetName] has arrived.\\n#N This is dangerous #!'
     const protectedText = protectPlaceholders(source)
-    const translated = '도착했습니다: <P0><P1><P2>'
+    const translated = '도착했습니다: <P0><P1><P2> 위험합니다 <P3>'
 
     expect(restorePlaceholders(translated, protectedText.placeholders)).toBe(
-      '도착했습니다: [ROOT.GetCountry.GetName]\\n#N This is dangerous #!',
+      '도착했습니다: [ROOT.GetCountry.GetName]\\n#N 위험합니다 #!',
     )
   })
 

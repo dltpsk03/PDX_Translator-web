@@ -129,6 +129,38 @@ function createRetryInstructions(errors: ValidationError[]) {
   return [...instructions]
 }
 
+function formatRetryProgressMessage(batch: TranslationBatch, error: ValidationError | undefined) {
+  if (!error) {
+    return 'Validation failed; retrying batch.'
+  }
+
+  const batchEntry =
+    typeof error.resultLineIndex === 'number' ? batch.entries[error.resultLineIndex] : undefined
+
+  if (!batchEntry) {
+    return error.message
+  }
+
+  const entry = batchEntry.entry
+  const message = error.message.replace(/^Line \d+\s+/, '')
+
+  return `${entry.fileName}:${entry.lineIndex + 1} ${entry.key}: ${message}`
+}
+
+function formatRequestRetryProgressMessage(batch: TranslationBatch, error: ValidationError | undefined) {
+  if (!error) {
+    return 'Translation request failed; retrying batch.'
+  }
+
+  const firstEntry = batch.entries[0]?.entry
+
+  if (!firstEntry) {
+    return error.message
+  }
+
+  return `${firstEntry.fileName}:${firstEntry.lineIndex + 1} ${firstEntry.key}: ${error.message}`
+}
+
 function createFailedResults(batch: TranslationBatch, errors: ValidationError[]): TranslatedEntryResult[] {
   return batch.entries.map((batchEntry) => ({
     entry: batchEntry.entry,
@@ -207,7 +239,7 @@ async function processBatch(
       lastErrors = result.errors
       retryInstructions = createRetryInstructions(lastErrors)
       if (attempt < retryAttempts) {
-        onRetry?.(lastErrors[0]?.message ?? 'Validation failed; retrying batch.')
+        onRetry?.(formatRetryProgressMessage(batch, lastErrors[0]))
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -222,7 +254,7 @@ async function processBatch(
       ]
       retryInstructions = createRetryInstructions(lastErrors)
       if (attempt < retryAttempts) {
-        onRetry?.(lastErrors[0]?.message ?? 'Translation request failed; retrying batch.')
+        onRetry?.(formatRequestRetryProgressMessage(batch, lastErrors[0]))
       }
     }
   }

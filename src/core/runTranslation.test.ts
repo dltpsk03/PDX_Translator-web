@@ -88,6 +88,27 @@ describe('runTranslation', () => {
     expect(result.results[0].outputLine).toBe(' title:0 "Translated proposal"')
   })
 
+  it('reports retry progress with source file line and key instead of batch line only', async () => {
+    const entries = entriesFrom(['', ' title:0 "A Dangerous Proposal"'].join('\n'))
+    const progress = vi.fn()
+    const translateBatch = vi
+      .fn<(batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>>()
+      .mockResolvedValueOnce(' title:0 "A Dangerous Proposal"')
+      .mockResolvedValueOnce(' title:0 "Translated proposal"')
+
+    await runTranslation({
+      entries,
+      translateBatch,
+      onProgress: progress,
+    })
+
+    expect(progress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recentError: 'source.yml:2 title: still matches the original source text.',
+      }),
+    )
+  })
+
   it('splits a failed batch into 10-entry retry chunks', async () => {
     const entries = entriesFrom(
       Array.from({ length: 24 }, (_, index) => ` key_${index}:0 "Value ${index}"`).join('\n'),

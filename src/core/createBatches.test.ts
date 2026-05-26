@@ -96,13 +96,14 @@ describe('createBatches', () => {
       { maxLines: 80, maxChars: 1000 },
     )
 
-    expect(batches[0].promptText).toBe(' tooltip:0 "<P0> gains <P1><P2><P3>"')
-    expect(batches[0].entries[0].protectedValue).toBe('<P0> gains <P1><P2><P3>')
+    expect(batches[0].promptText).toBe(' tooltip:0 "<P0> gains <P1><P2><P3> Good <P4>"')
+    expect(batches[0].entries[0].protectedValue).toBe('<P0> gains <P1><P2><P3> Good <P4>')
     expect(batches[0].entries[0].placeholders).toEqual([
       { token: '<P0>', value: '[ROOT.GetCountry.GetName]' },
       { token: '<P1>', value: '£gold£' },
       { token: '<P2>', value: '\\n' },
-      { token: '<P3>', value: '#P Good #!' },
+      { token: '<P3>', value: '#P' },
+      { token: '<P4>', value: '#!' },
     ])
   })
 
