@@ -192,6 +192,30 @@ describe('validateTranslatedBatch', () => {
     ])
   })
 
+  it('accepts unchanged values when the source contains only protected placeholders', () => {
+    const batch = batchFrom(
+      [
+        ` armed_forces_clout: "[GetInterestGroupVariant('ig_armed_forces',GetPlayer).GetNameWithCountryVariant] [concept_clout]"`,
+        ` officers_radicals: "[GetPopType('officers').GetName] [Concept('concept_radical','$radicals_fraction$')]"`,
+        ` officers_loyalists: "[GetPopType('officers').GetName] [Concept('concept_loyalist','$loyalists_fraction$')]"`,
+      ].join('\n'),
+    )
+
+    const result = validateTranslatedBatch(
+      batch,
+      [
+        ` armed_forces_clout: "<P0> <P1>"`,
+        ` officers_radicals: "<P0> <P1>"`,
+        ` officers_loyalists: "<P0> <P1>"`,
+      ].join('\n'),
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      errors: [],
+    })
+  })
+
   it('reports translated values that append the original source text', () => {
     const batch = batchFrom(
       ' stts_movement.19.f:0 "We must smother the internal and external enemies."',

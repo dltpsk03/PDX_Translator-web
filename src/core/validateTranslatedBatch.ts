@@ -49,8 +49,12 @@ function normalizeComparableValue(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function removeProtectedPlaceholderTokens(value: string) {
+  return value.replace(/<P\d+>/g, '')
+}
+
 function isMeaningfulSourceValue(value: string) {
-  const normalized = normalizeComparableValue(value)
+  const normalized = normalizeComparableValue(removeProtectedPlaceholderTokens(value))
 
   return normalized.length >= 4 && /[\p{L}\p{N}]/u.test(normalized)
 }
