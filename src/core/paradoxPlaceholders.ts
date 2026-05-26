@@ -2,6 +2,7 @@ const placeholderSources = [
   String.raw`\\n`,
   String.raw`#[A-Za-z][A-Za-z0-9_]*\b`,
   String.raw`#!`,
+  String.raw`\[Concept\([^\r\n]*?\)\]`,
   String.raw`\[[^\]\r\n]+\]`,
   String.raw`\$[^$\r\n]+\$`,
   String.raw`£[^£\r\n]+£`,

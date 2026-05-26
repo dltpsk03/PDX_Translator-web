@@ -25,6 +25,23 @@ describe('protectPlaceholders', () => {
     })
   })
 
+  it('protects Concept placeholders that contain bracket references', () => {
+    const source =
+      "inspect [Concept('concept_country','[SCOPE.sCountry(\"target\").GetName]')] before translating."
+
+    const result = protectPlaceholders(source)
+
+    expect(result).toEqual({
+      text: 'inspect <P0> before translating.',
+      placeholders: [
+        {
+          token: '<P0>',
+          value: "[Concept('concept_country','[SCOPE.sCountry(\"target\").GetName]')]",
+        },
+      ],
+    })
+  })
+
   it('protects dollar placeholders', () => {
     const result = protectPlaceholders('$COUNTRY_NAME$ declared war on $TARGET$')
 
