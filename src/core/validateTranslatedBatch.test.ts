@@ -175,6 +175,74 @@ describe('validateTranslatedBatch', () => {
     ])
   })
 
+  it('reports duplicated protected placeholder tokens', () => {
+    const batch = batchFrom(' desc:0 "[ROOT.GetCountry.GetName] arrived"')
+
+    const result = validateTranslatedBatch(batch, ' desc:0 "<P0> 도착했다 <P0>"')
+
+    expect(result.errors).toEqual([
+      {
+        code: 'placeholder_count_mismatch',
+        batchIndex: 0,
+        lineIndex: 0,
+        globalIndex: 0,
+        resultLineIndex: 0,
+        message: 'Line 1 repeats placeholder <P0> 2 times.',
+      },
+    ])
+  })
+
+  it('reports placeholder tokens that were not in the source line', () => {
+    const batch = batchFrom(' desc:0 "[ROOT.GetCountry.GetName] arrived"')
+
+    const result = validateTranslatedBatch(batch, ' desc:0 "<P0> 도착했다 <P9>"')
+
+    expect(result.errors).toEqual([
+      {
+        code: 'unknown_placeholder_token',
+        batchIndex: 0,
+        lineIndex: 0,
+        globalIndex: 0,
+        resultLineIndex: 0,
+        message: 'Line 1 contains unknown placeholder token <P9>.',
+      },
+    ])
+  })
+
+  it('reports raw Paradox placeholder text leaked into protected output', () => {
+    const batch = batchFrom(
+      [
+        ` concept_line:0 "[Concept('concept_country','$concept_countries$')] matters"`,
+        ' variable_line:0 "$COUNTRY_NAME$ matters"',
+        ' icon_line:0 "£gold£ matters"',
+        ' style_line:0 "#P Good #! matters"',
+        ' at_icon_line:0 "@money! matters"',
+        ' lowercase_style_line:0 "#v Good #! matters"',
+      ].join('\n'),
+    )
+
+    const result = validateTranslatedBatch(
+      batch,
+      [
+        ` concept_line:0 "<P0>는 중요하며 [Concept('concept_country','$concept_countries를 잘못 번역함')]도 추가됨"`,
+        ' variable_line:0 "<P0>는 중요하며 $COUNTRY_NAME$도 추가됨"',
+        ' icon_line:0 "<P0>는 중요하며 £gold£도 추가됨"',
+        ' style_line:0 "<P0>는 중요하며 #P Good #!도 추가됨"',
+        ' at_icon_line:0 "<P0>는 중요하며 @money!도 추가됨"',
+        ' lowercase_style_line:0 "<P0>는 중요하며 #v Good #!도 추가됨"',
+      ].join('\n'),
+    )
+
+    expect(result.errors.map((error) => error.code)).toEqual([
+      'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+      'raw_placeholder_leaked',
+    ])
+  })
+
   it('reports values that are returned unchanged from the source', () => {
     const batch = batchFrom(' title:0 "A Dangerous Proposal"')
 

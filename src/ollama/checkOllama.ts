@@ -1,3 +1,5 @@
+import { normalizeLocalOllamaEndpoint } from './localEndpoint'
+
 export const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434'
 
 export type OllamaModel = {
@@ -28,14 +30,20 @@ type OllamaTagsResponse = {
   error?: string
 }
 
-function normalizeEndpoint(endpoint: string) {
-  return endpoint.replace(/\/+$/, '')
-}
-
 export async function checkOllama(
   endpoint = DEFAULT_OLLAMA_ENDPOINT,
 ): Promise<OllamaConnectionResult> {
-  const normalizedEndpoint = normalizeEndpoint(endpoint)
+  let normalizedEndpoint: string
+
+  try {
+    normalizedEndpoint = normalizeLocalOllamaEndpoint(endpoint)
+  } catch (error) {
+    return {
+      ok: false,
+      endpoint,
+      error: error instanceof Error ? error.message : 'Invalid Ollama endpoint.',
+    }
+  }
 
   try {
     const response = await fetch(`${normalizedEndpoint}/api/tags`, {

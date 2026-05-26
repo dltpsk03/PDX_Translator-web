@@ -1,4 +1,5 @@
 import type { TranslationBatch } from './createBatches'
+import { findParadoxPlaceholderText } from './paradoxPlaceholders'
 import { parseParadoxYml } from './parseParadoxYml'
 
 export type ValidationErrorCode =
@@ -9,6 +10,9 @@ export type ValidationErrorCode =
   | 'key_mismatch'
   | 'version_mismatch'
   | 'placeholder_missing'
+  | 'placeholder_count_mismatch'
+  | 'unknown_placeholder_token'
+  | 'raw_placeholder_leaked'
   | 'escaped_newline_missing'
   | 'untranslated_value'
   | 'source_value_repeated'
@@ -51,6 +55,20 @@ function normalizeComparableValue(value: string) {
 
 function removeProtectedPlaceholderTokens(value: string) {
   return value.replace(/<P\d+>/g, '')
+}
+
+function countTokenOccurrences(value: string, token: string) {
+  return value.split(token).length - 1
+}
+
+function findUnknownPlaceholderTokens(value: string, knownTokens: Set<string>) {
+  return [...value.matchAll(/<P\d+>/g)]
+    .map((match) => match[0])
+    .filter((token, index, tokens) => !knownTokens.has(token) && tokens.indexOf(token) === index)
+}
+
+function findRawPlaceholderLeaks(value: string) {
+  return findParadoxPlaceholderText(value)
 }
 
 function isMeaningfulSourceValue(value: string) {
@@ -120,8 +138,13 @@ export function validateTranslatedBatch(
       )
     }
 
-    for (const placeholder of batch.entries[index].placeholders) {
-      if (!translatedLine.value.includes(placeholder.token)) {
+    const placeholders = batch.entries[index].placeholders
+    const knownPlaceholderTokens = new Set(placeholders.map((placeholder) => placeholder.token))
+
+    for (const placeholder of placeholders) {
+      const tokenCount = countTokenOccurrences(translatedLine.value, placeholder.token)
+
+      if (tokenCount === 0) {
         const code =
           placeholder.value === '\\n' ? 'escaped_newline_missing' : 'placeholder_missing'
 
@@ -133,7 +156,38 @@ export function validateTranslatedBatch(
             `Line ${index + 1} is missing placeholder ${placeholder.token} (${placeholder.value}).`,
           ),
         )
+      } else if (tokenCount > 1) {
+        errors.push(
+          createEntryError(
+            batch,
+            index,
+            'placeholder_count_mismatch',
+            `Line ${index + 1} repeats placeholder ${placeholder.token} ${tokenCount} times.`,
+          ),
+        )
       }
+    }
+
+    for (const token of findUnknownPlaceholderTokens(translatedLine.value, knownPlaceholderTokens)) {
+      errors.push(
+        createEntryError(
+          batch,
+          index,
+          'unknown_placeholder_token',
+          `Line ${index + 1} contains unknown placeholder token ${token}.`,
+        ),
+      )
+    }
+
+    for (const placeholder of findRawPlaceholderLeaks(translatedLine.value)) {
+      errors.push(
+        createEntryError(
+          batch,
+          index,
+          'raw_placeholder_leaked',
+          `Line ${index + 1} contains raw placeholder text instead of protected tokens: ${placeholder}.`,
+        ),
+      )
     }
 
     const originalValue = normalizeComparableValue(batch.entries[index].protectedValue)

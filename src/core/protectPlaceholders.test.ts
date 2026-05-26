@@ -55,6 +55,16 @@ describe('protectPlaceholders', () => {
     ])
   })
 
+  it('protects general Paradox style blocks and at-sign icons', () => {
+    const result = protectPlaceholders('#v highlighted value #! costs @money!')
+
+    expect(result.text).toBe('<P0> costs <P1>')
+    expect(result.placeholders).toEqual([
+      { token: '<P0>', value: '#v highlighted value #!' },
+      { token: '<P1>', value: '@money!' },
+    ])
+  })
+
   it('protects escaped newline markers', () => {
     const result = protectPlaceholders('First line\\nSecond line')
 

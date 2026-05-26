@@ -39,7 +39,7 @@ export function buildPrompt(
     '- Keep the exact same line order.',
     '- Placeholder tokens are immutable. Keep every token such as <P0>, <P1>, and <P2> byte-for-byte unchanged.',
     '- Never expand, translate, repair, reinterpret, or move text inside a placeholder token.',
-    '- Never write raw Paradox placeholders such as [Concept(...)], [ROOT.GetName], $COUNTRY$, £gold£, #P ... #!, or #N ... #! unless they already appear unprotected in the input line.',
+    '- Never write raw Paradox placeholders such as [Concept(...)], [ROOT.GetName], $COUNTRY$, £gold£, @money!, #P ... #!, or #v ... #! unless they already appear unprotected in the input line.',
     '- A placeholder token may appear inside a translated Korean sentence, but the token characters themselves must be identical.',
     '- Keep escaped newline markers \\n unchanged.',
     '- Do not use thinking, reasoning, or analysis output.',
@@ -47,10 +47,12 @@ export function buildPrompt(
     '- Do not use markdown.',
     '- Return only translated localization lines.',
     '',
-    'Token handling example:',
-    'Input:  identity_corporate_hegemony_desc:0 "This Identity values sovereign <P0> as corporate subsidiaries."',
-    'Output: identity_corporate_hegemony_desc:0 "이 정체성은 주권 국가인 <P0>를 기업의 자회사로 취급합니다."',
-    'Do not output: identity_corporate_hegemony_desc:0 "이 정체성은 [Concept(...)]를 기업의 자회사로 취급합니다."',
+    'Token handling examples:',
+    'Input:  example_key:0 "Source sentence with <P0> and <P1>."',
+    'Output: example_key:0 "Translated sentence with <P0> and <P1>."',
+    'Input:  example_tooltip:0 "<P0> gains <P1> after the event."',
+    'Output: example_tooltip:0 "<P0> gains translated words with <P1>."',
+    'Bad:    example_key:0 "Translated sentence with [Concept(...)] or $COUNTRY$ instead of <P0>."',
   ]
 
   if (glossaryEntries.length > 0) {

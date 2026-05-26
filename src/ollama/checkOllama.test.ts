@@ -56,6 +56,18 @@ describe('checkOllama', () => {
     })
   })
 
+  it('rejects non-local endpoints without sending a request', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(checkOllama('http://example.com:11434')).resolves.toEqual({
+      ok: false,
+      endpoint: 'http://example.com:11434',
+      error: 'Ollama endpoint must be localhost, 127.0.0.1, or [::1].',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('returns a failed result for non-2xx responses', async () => {
     vi.stubGlobal(
       'fetch',

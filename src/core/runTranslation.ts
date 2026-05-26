@@ -115,9 +115,14 @@ function createRetryInstructions(errors: ValidationError[]) {
       instructions.add('Keep version markers such as :0 unchanged.')
     } else if (
       error.code === 'placeholder_missing' ||
+      error.code === 'placeholder_count_mismatch' ||
+      error.code === 'unknown_placeholder_token' ||
+      error.code === 'raw_placeholder_leaked' ||
       error.code === 'escaped_newline_missing'
     ) {
-      instructions.add('Keep every placeholder token such as <P0> and every escaped newline marker unchanged.')
+      instructions.add(
+        'Use only the original placeholder tokens such as <P0>; do not add, remove, duplicate, expand, or rewrite placeholder text.',
+      )
     }
   }
 

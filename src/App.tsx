@@ -11,6 +11,7 @@ import {
 import { parseParadoxYml } from './core/parseParadoxYml'
 import { readDroppedTextFiles } from './core/readDroppedTextFiles'
 import { readUploadedTextFiles } from './core/readUploadedTextFiles'
+import { createUniqueZipPath } from './core/sanitizeZipPath'
 import {
   createTranslationResultMap,
   rebuildParadoxYml,
@@ -173,8 +174,7 @@ const initialProgress: TranslationProgress = {
 }
 
 const settingsStorageKey = 'pdx-translator-settings-v1'
-const sessionStorageKey = 'pdx-translator-session-v1'
-const maxStoredSessionCharacters = 3_500_000
+const legacySessionStorageKey = 'pdx-translator-session-v1'
 
 type StoredSettings = {
   providerId?: ProviderId
@@ -190,19 +190,6 @@ type StoredSettings = {
   includeBomOnDownload?: boolean
   customInstructions?: string
   glossaryText?: string
-}
-
-type StoredTranslationResult = {
-  globalIndex: number
-  translatedValue: string
-  outputLine: string
-  failed: boolean
-}
-
-type StoredSession = {
-  files: UploadedTextFile[]
-  results: StoredTranslationResult[]
-  targetLanguage: ParadoxLanguageCode
 }
 
 function readStoredSettings(): StoredSettings {
@@ -493,8 +480,6 @@ function App() {
   const [translationStartedAt, setTranslationStartedAt] = useState<number | null>(null)
   const [translationFinishedAt, setTranslationFinishedAt] = useState<number | null>(null)
   const [externalApiConfirmed, setExternalApiConfirmed] = useState(false)
-  const [restoreNotice, setRestoreNotice] = useState<string | null>(null)
-  const [sessionSavedAt, setSessionSavedAt] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const totalBytes = uploadedFiles.reduce((sum, file) => sum + file.size, 0)
   const bomCount = uploadedFiles.filter((file) => file.hadBom).length
@@ -698,6 +683,10 @@ function App() {
   ]
 
   useEffect(() => {
+    localStorage.removeItem(legacySessionStorageKey)
+  }, [])
+
+  useEffect(() => {
     const settings: StoredSettings = {
       providerId,
       endpoint,
@@ -730,108 +719,6 @@ function App() {
     customInstructions,
     glossaryText,
   ])
-
-  useEffect(() => {
-    if (uploadedFiles.length === 0) {
-      localStorage.removeItem(sessionStorageKey)
-      setSessionSavedAt(null)
-      return
-    }
-
-    const session: StoredSession = {
-      files: uploadedFiles,
-      targetLanguage,
-      results: translationResults.map((result) => ({
-        globalIndex: result.entry.globalIndex,
-        translatedValue: result.translatedValue,
-        outputLine: result.outputLine,
-        failed: result.failed,
-      })),
-    }
-    const serializedSession = JSON.stringify(session)
-
-    if (serializedSession.length > maxStoredSessionCharacters) {
-      setSessionSavedAt(null)
-      return
-    }
-
-    try {
-      localStorage.setItem(sessionStorageKey, serializedSession)
-      setSessionSavedAt(new Date().toLocaleTimeString())
-    } catch {
-      setSessionSavedAt(null)
-    }
-  }, [uploadedFiles, targetLanguage, translationResults])
-
-  useEffect(() => {
-    const storedSessionText = localStorage.getItem(sessionStorageKey)
-
-    if (!storedSessionText || uploadedFiles.length > 0) {
-      return
-    }
-
-    try {
-      const storedSession = JSON.parse(storedSessionText) as StoredSession
-      let globalIndexStart = 0
-      const nextParsedFiles = storedSession.files.map((file) => {
-        const parsedLines = parseParadoxYml(file.text, {
-          fileName: file.relativePath,
-          globalIndexStart,
-        })
-        const entries = parsedLines.filter(
-          (line): line is LocalizationEntry => line.type === 'entry',
-        )
-
-        globalIndexStart += entries.length
-
-        return {
-          file,
-          parsedLines,
-        }
-      })
-      const nextEntries = nextParsedFiles.flatMap((parsedFile) =>
-        parsedFile.parsedLines.filter((line): line is LocalizationEntry => line.type === 'entry'),
-      )
-      const entryMap = new Map(nextEntries.map((entry) => [entry.globalIndex, entry]))
-      const restoredResults = storedSession.results.flatMap((storedResult) => {
-        const entry = entryMap.get(storedResult.globalIndex)
-
-        return entry
-          ? [
-              {
-                entry,
-                translatedValue: storedResult.translatedValue,
-                outputLine: storedResult.outputLine,
-                failed: storedResult.failed,
-                errors: [],
-              },
-            ]
-          : []
-      })
-
-      setUploadedFiles(storedSession.files)
-      setParsedFiles(nextParsedFiles)
-      setLocalizationEntries(nextEntries)
-      setTranslationResults(restoredResults)
-      setFailedTranslationEntries(restoredResults.filter((result) => result.failed))
-      setTranslationProgress({
-        ...initialProgress,
-        totalEntries: nextEntries.length,
-        totalBatches:
-          nextEntries.length > 0
-            ? createBatches(nextEntries, { maxLines: normalizedBatchSize, maxChars: 12000 }).length
-            : 0,
-        completedEntries: restoredResults.length,
-      })
-      setRestoreNotice(
-        uiLanguage === 'ko'
-          ? '이전 작업을 브라우저 저장소에서 복구했습니다.'
-          : 'Restored the previous workspace from browser storage.',
-      )
-    } catch {
-      localStorage.removeItem(sessionStorageKey)
-    }
-  }, [normalizedBatchSize, uiLanguage, uploadedFiles.length])
 
   function applyUploadResult(result: Awaited<ReturnType<typeof readUploadedTextFiles>>) {
     let globalIndexStart = 0
@@ -868,7 +755,6 @@ function App() {
     setTranslationStatus('idle')
     setFailedTranslationEntries([])
     setTranslationResults([])
-    setRestoreNotice(null)
   }
 
   async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -1090,8 +976,12 @@ function App() {
 
   async function handleDownloadFiles() {
     const translationResultMap = createTranslationResultMap(translationResults)
+    const usedZipPaths = new Set<string>()
     const rebuiltFiles = parsedFiles.map((parsedFile) => ({
-      name: `OUTPUT/${localizeParadoxRelativePath(parsedFile.file.relativePath, targetLanguage)}`,
+      name: createUniqueZipPath(
+        `OUTPUT/${localizeParadoxRelativePath(parsedFile.file.relativePath, targetLanguage)}`,
+        usedZipPaths,
+      ),
       text: rebuildParadoxYml(parsedFile.parsedLines, translationResultMap, {
         targetLanguage,
       }).text,
@@ -1188,19 +1078,6 @@ function App() {
           <Metric label={t.batches} value={batchCount} />
           <Metric label={t.failed} value={failedTranslationEntries.length} />
         </section>
-
-        {restoreNotice || sessionSavedAt ? (
-          <div className="mb-5 border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
-            {restoreNotice ? <span>{restoreNotice}</span> : null}
-            {sessionSavedAt ? (
-              <span className={restoreNotice ? 'ml-2' : ''}>
-                {uiLanguage === 'ko'
-                  ? `작업 자동 저장: ${sessionSavedAt}`
-                  : `Workspace autosaved: ${sessionSavedAt}`}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
 
         <nav className="mb-5 grid grid-cols-3 border border-slate-300 bg-white p-1">
           {steps.map((step) => (

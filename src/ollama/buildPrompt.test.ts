@@ -38,7 +38,7 @@ describe('buildPrompt', () => {
     expect(prompt).toContain(
       'Placeholder tokens are immutable. Keep every token such as <P0>, <P1>, and <P2> byte-for-byte unchanged.',
     )
-    expect(prompt).toContain('Token handling example:')
+    expect(prompt).toContain('Token handling examples:')
   })
 
   it('uses the selected source and target languages', () => {
@@ -88,7 +88,7 @@ describe('buildPrompt', () => {
       'Placeholder tokens are immutable. Keep every token such as <P0>, <P1>, and <P2> byte-for-byte unchanged.',
     )
     expect(prompt).toContain(
-      'Never write raw Paradox placeholders such as [Concept(...)], [ROOT.GetName], $COUNTRY$, £gold£, #P ... #!, or #N ... #! unless they already appear unprotected in the input line.',
+      'Never write raw Paradox placeholders such as [Concept(...)], [ROOT.GetName], $COUNTRY$, £gold£, @money!, #P ... #!, or #v ... #! unless they already appear unprotected in the input line.',
     )
     expect(prompt).toContain('Keep escaped newline markers \\n unchanged.')
   })

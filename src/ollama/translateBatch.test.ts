@@ -95,6 +95,18 @@ describe('translateBatch', () => {
     await expect(translateBatch(batch())).rejects.toThrow('Ollama returned HTTP 500.')
   })
 
+  it('rejects non-local endpoints before sending translation text', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      translateBatch(batch(' key:0 "Private text"'), {
+        endpoint: 'http://example.com:11434',
+      }),
+    ).rejects.toThrow('Ollama endpoint must be localhost, 127.0.0.1, or [::1].')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('throws when the response text is missing', async () => {
     vi.stubGlobal(
       'fetch',

@@ -3,6 +3,7 @@ import type { ParadoxLanguageCode } from '../core/paradoxLanguages'
 import type { GlossaryEntry } from '../prompt/parseGlossary'
 import { buildPrompt } from './buildPrompt'
 import { DEFAULT_OLLAMA_ENDPOINT } from './checkOllama'
+import { normalizeLocalOllamaEndpoint } from './localEndpoint'
 
 export const DEFAULT_TRANSLATION_MODEL = 'gemma4:e4b'
 
@@ -26,10 +27,6 @@ type OllamaGenerateResponse = {
   error?: string
 }
 
-function normalizeEndpoint(endpoint: string) {
-  return endpoint.replace(/\/+$/, '')
-}
-
 export async function translateBatch(
   batch: TranslationBatch,
   {
@@ -47,7 +44,7 @@ export async function translateBatch(
     signal,
   }: TranslateBatchOptions = {},
 ) {
-  const normalizedEndpoint = normalizeEndpoint(endpoint)
+  const normalizedEndpoint = normalizeLocalOllamaEndpoint(endpoint)
   const response = await fetch(`${normalizedEndpoint}/api/generate`, {
     method: 'POST',
     headers: {
