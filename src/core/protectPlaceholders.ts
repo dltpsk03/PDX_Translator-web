@@ -1,5 +1,5 @@
 import type { ProtectedPlaceholder } from '../types/paradox'
-import { createParadoxPlaceholderPattern } from './paradoxPlaceholders'
+import { findParadoxPlaceholderMatches } from './paradoxPlaceholders'
 
 export type ProtectedText = {
   text: string
@@ -8,20 +8,25 @@ export type ProtectedText = {
 
 export function protectPlaceholders(value: string): ProtectedText {
   const placeholders: ProtectedPlaceholder[] = []
+  let protectedText = ''
+  let cursor = 0
 
-  const text = value.replace(createParadoxPlaceholderPattern(), (placeholder) => {
+  for (const match of findParadoxPlaceholderMatches(value)) {
     const token = `<P${placeholders.length}>`
 
+    protectedText += value.slice(cursor, match.index)
+    protectedText += token
     placeholders.push({
       token,
-      value: placeholder,
+      value: match.text,
     })
+    cursor = match.index + match.text.length
+  }
 
-    return token
-  })
+  protectedText += value.slice(cursor)
 
   return {
-    text,
+    text: protectedText,
     placeholders,
   }
 }

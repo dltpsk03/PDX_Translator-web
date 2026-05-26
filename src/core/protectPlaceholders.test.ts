@@ -42,6 +42,40 @@ describe('protectPlaceholders', () => {
     })
   })
 
+  it('protects nested bracket placeholders as a single placeholder', () => {
+    const source =
+      "[SelectLocalization(EqualTo_string('x', '[This.GetName]'), 'yes_key', 'no_key')] follows."
+
+    const result = protectPlaceholders(source)
+
+    expect(result).toEqual({
+      text: '<P0> follows.',
+      placeholders: [
+        {
+          token: '<P0>',
+          value:
+            "[SelectLocalization(EqualTo_string('x', '[This.GetName]'), 'yes_key', 'no_key')]",
+        },
+      ],
+    })
+  })
+
+  it('protects all bracket command placeholders without depending on command names', () => {
+    const source =
+      "[concept_power_bloc_leader] uses [GetLawType('law_directorate').GetName] through [SomeCommand('a', '[Nested.Command]')]."
+
+    const result = protectPlaceholders(source)
+
+    expect(result).toEqual({
+      text: '<P0> uses <P1> through <P2>.',
+      placeholders: [
+        { token: '<P0>', value: '[concept_power_bloc_leader]' },
+        { token: '<P1>', value: "[GetLawType('law_directorate').GetName]" },
+        { token: '<P2>', value: "[SomeCommand('a', '[Nested.Command]')]" },
+      ],
+    })
+  })
+
   it('protects dollar placeholders', () => {
     const result = protectPlaceholders('$COUNTRY_NAME$ declared war on $TARGET$')
 

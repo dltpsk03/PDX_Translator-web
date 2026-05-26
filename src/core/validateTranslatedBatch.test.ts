@@ -247,6 +247,36 @@ describe('validateTranslatedBatch', () => {
     ])
   })
 
+  it('rejects translated text inserted inside a raw Concept placeholder', () => {
+    const batch = batchFrom(
+      ` identity_desc:0 "This Identity values industrial and economic consolidation among its Bloc Members, treating sovereign [Concept('concept_country','$concept_countries$')] as corporate subsidiaries."`,
+    )
+
+    const result = validateTranslatedBatch(
+      batch,
+      ` identity_desc:0 "이 정체성은 블록 구성원 간의 산업 및 경제적 통합을 중시하며, 주권 [Concept('concept_country','$concept_countries을(를) 기업의 자회사처럼 취급합니다.)]을(를) 기업의 자회사처럼 취급합니다."`,
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.map((error) => error.code)).toContain('placeholder_missing')
+    expect(result.errors.map((error) => error.code)).toContain('raw_placeholder_leaked')
+  })
+
+  it('rejects translated text inserted inside mixed raw placeholders', () => {
+    const batch = batchFrom(
+      ` member_action_desc:0 "The [concept_power_bloc_leader] can use a [concept_bloc_member_action] to overthrow a [Concept('concept_power_bloc_member','$concept_power_bloc_member$')]'s government in favor of a [GetLawType('law_directorate').GetName]"`,
+    )
+
+    const result = validateTranslatedBatch(
+      batch,
+      ` member_action_desc:0 "[concept_power_bloc_leader]은(는) [concept_bloc_member_action]을(를) 사용하여 [Concept('concept_power_bloc_member','$concept_power_bloc_member의 정부를 전복하고 [GetLawType('law_directorate').GetName]을(를) 세울 수 있습니다.)]의 정부를 전복하고 [GetLawType('law_directorate').GetName]을(를) 세울 수 있습니다."`,
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.map((error) => error.code)).toContain('placeholder_missing')
+    expect(result.errors.map((error) => error.code)).toContain('raw_placeholder_leaked')
+  })
+
   it('reports values that are returned unchanged from the source', () => {
     const batch = batchFrom(' title:0 "A Dangerous Proposal"')
 

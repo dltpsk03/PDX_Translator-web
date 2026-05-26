@@ -636,12 +636,15 @@ function App() {
     uiLanguage === 'ko'
       ? '고정 구조 보존 규칙에 추가 지시사항과 용어집을 더합니다.'
       : 'Add custom instructions and glossary terms without replacing the core safety rules.'
+  const promptPreviewBatch =
+    localizationEntries.length > 0
+      ? createBatches([localizationEntries[0]], { maxLines: 1, maxChars: 10000 })[0]
+      : undefined
   const promptPreviewText = buildPrompt(
-    {
+    promptPreviewBatch ?? {
       batchIndex: 0,
       entries: [],
-      promptText:
-        localizationEntries[0]?.rawLine ?? ' sample_key:0 "Sample localization text."',
+      promptText: ' sample_key:0 "Sample localization text."',
       charCount: 0,
     },
     {

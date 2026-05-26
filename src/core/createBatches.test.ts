@@ -107,6 +107,56 @@ describe('createBatches', () => {
     ])
   })
 
+  it('protects Concept placeholders before sending prompt lines', () => {
+    const batches = createBatches(
+      [
+        entry({
+          key: 'identity_desc',
+          value:
+            "This Identity values industrial and economic consolidation among its Bloc Members, treating sovereign [Concept('concept_country','$concept_countries$')] as corporate subsidiaries.",
+          globalIndex: 0,
+          lineIndex: 1,
+        }),
+      ],
+      { maxLines: 80, maxChars: 1000 },
+    )
+
+    expect(batches[0].promptText).toBe(
+      ' identity_desc:0 "This Identity values industrial and economic consolidation among its Bloc Members, treating sovereign <P0> as corporate subsidiaries."',
+    )
+    expect(batches[0].entries[0].placeholders).toEqual([
+      { token: '<P0>', value: "[Concept('concept_country','$concept_countries$')]" },
+    ])
+  })
+
+  it('protects mixed bracket and Concept placeholders before sending prompt lines', () => {
+    const batches = createBatches(
+      [
+        entry({
+          key: 'member_action_desc',
+          value:
+            "The [concept_power_bloc_leader] can use a [concept_bloc_member_action] to overthrow a [Concept('concept_power_bloc_member','$concept_power_bloc_member$')]'s government in favor of a [GetLawType('law_directorate').GetName]",
+          globalIndex: 0,
+          lineIndex: 1,
+        }),
+      ],
+      { maxLines: 80, maxChars: 1000 },
+    )
+
+    expect(batches[0].promptText).toBe(
+      ` member_action_desc:0 "The <P0> can use a <P1> to overthrow a <P2>'s government in favor of a <P3>"`,
+    )
+    expect(batches[0].entries[0].placeholders).toEqual([
+      { token: '<P0>', value: '[concept_power_bloc_leader]' },
+      { token: '<P1>', value: '[concept_bloc_member_action]' },
+      {
+        token: '<P2>',
+        value: "[Concept('concept_power_bloc_member','$concept_power_bloc_member$')]",
+      },
+      { token: '<P3>', value: "[GetLawType('law_directorate').GetName]" },
+    ])
+  })
+
   it('supports lines without numeric version while preserving key structure', () => {
     const batches = createBatches(
       [
