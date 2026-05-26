@@ -88,32 +88,36 @@ describe('runTranslation', () => {
     expect(result.results[0].outputLine).toBe(' title:0 "Translated proposal"')
   })
 
-  it('splits a failed batch in half and retries split batches', async () => {
+  it('splits a failed batch into 10-entry retry chunks', async () => {
     const entries = entriesFrom(
-      [' first:0 "One"', ' second:0 "Two"', ' third:0 "Three"', ' fourth:0 "Four"'].join('\n'),
+      Array.from({ length: 24 }, (_, index) => ` key_${index}:0 "Value ${index}"`).join('\n'),
     )
     const translateBatch = vi.fn(async (batch: TranslationBatch) => {
-      if (batch.entries.length === 4) {
+      if (batch.entries.length > 10) {
         return 'invalid output'
       }
 
-      return batch.promptText.replaceAll('One', '하나').replaceAll('Two', '둘').replaceAll('Three', '셋').replaceAll('Four', '넷')
+      return batch.promptText.replaceAll('Value', '번역')
     })
 
     const result = await runTranslation({
       entries,
-      batchSize: 4,
+      batchSize: 30,
       translateBatch,
     })
 
-    expect(translateBatch).toHaveBeenCalledTimes(4)
-    expect(result.failedEntries).toEqual([])
-    expect(result.results.map((entry) => entry.outputLine)).toEqual([
-      ' first:0 "하나"',
-      ' second:0 "둘"',
-      ' third:0 "셋"',
-      ' fourth:0 "넷"',
+    expect(translateBatch).toHaveBeenCalledTimes(5)
+    expect(translateBatch.mock.calls.map(([batch]) => batch.entries.length)).toEqual([
+      24,
+      24,
+      10,
+      10,
+      4,
     ])
+    expect(result.failedEntries).toEqual([])
+    expect(result.results).toHaveLength(24)
+    expect(result.results[0].outputLine).toBe(' key_0:0 "번역 0"')
+    expect(result.results[23].outputLine).toBe(' key_23:0 "번역 23"')
   })
 
   it('marks entries failed and preserves original lines after retry and split failures', async () => {

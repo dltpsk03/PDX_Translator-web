@@ -11,6 +11,20 @@ describe('protectPlaceholders', () => {
     })
   })
 
+  it('protects bracket placeholders that contain dollar placeholders', () => {
+    const source =
+      "sovereign [Concept('concept_country','$concept_countries$')] as corporate subsidiaries."
+
+    const result = protectPlaceholders(source)
+
+    expect(result).toEqual({
+      text: 'sovereign <P0> as corporate subsidiaries.',
+      placeholders: [
+        { token: '<P0>', value: "[Concept('concept_country','$concept_countries$')]" },
+      ],
+    })
+  })
+
   it('protects dollar placeholders', () => {
     const result = protectPlaceholders('$COUNTRY_NAME$ declared war on $TARGET$')
 

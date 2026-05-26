@@ -38,6 +38,7 @@ export type RunTranslationOptions = {
   maxChars?: number
   retryAttempts?: number
   splitFailedBatches?: boolean
+  failedBatchSplitSize?: number
   translateBatch?: (batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>
   signal?: AbortSignal
   onProgress?: (progress: TranslationProgress) => void
@@ -78,6 +79,16 @@ function createFailureError(batch: TranslationBatch, message: string): Validatio
     batchIndex: batch.batchIndex,
     message,
   }
+}
+
+function chunkEntries(entries: BatchEntry[], chunkSize: number) {
+  const chunks: BatchEntry[][] = []
+
+  for (let index = 0; index < entries.length; index += chunkSize) {
+    chunks.push(entries.slice(index, index + chunkSize))
+  }
+
+  return chunks
 }
 
 function translateWithDefaultProvider(batch: TranslationBatch, retryInstructions?: string[]) {
@@ -174,6 +185,7 @@ async function processBatch(
   translateBatch: (batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>,
   allowSplit: boolean,
   retryAttempts: number,
+  failedBatchSplitSize: number,
   onRetry?: (message: string) => void,
 ): Promise<TranslatedEntryResult[]> {
   let lastErrors: ValidationError[] = []
@@ -210,15 +222,13 @@ async function processBatch(
     }
   }
 
-  if (allowSplit && batch.entries.length > 1) {
-    const midpoint = Math.ceil(batch.entries.length / 2)
-    const splitBatches = [
-      createBatchFromEntries(batch.batchIndex, batch.entries.slice(0, midpoint)),
-      createBatchFromEntries(batch.batchIndex, batch.entries.slice(midpoint)),
-    ]
+  if (allowSplit && batch.entries.length > failedBatchSplitSize) {
+    const splitBatches = chunkEntries(batch.entries, failedBatchSplitSize).map((entries) =>
+      createBatchFromEntries(batch.batchIndex, entries),
+    )
     const splitResults = await Promise.all(
       splitBatches.map((splitBatch) =>
-        processBatch(splitBatch, translateBatch, false, retryAttempts, onRetry),
+        processBatch(splitBatch, translateBatch, false, retryAttempts, failedBatchSplitSize, onRetry),
       ),
     )
 
@@ -235,6 +245,7 @@ export async function runTranslation({
   maxChars = 12000,
   retryAttempts = 1,
   splitFailedBatches = true,
+  failedBatchSplitSize = 10,
   translateBatch = translateWithDefaultProvider,
   signal,
   onProgress,
@@ -242,6 +253,7 @@ export async function runTranslation({
   assertPositiveInteger('batchSize', batchSize)
   assertPositiveInteger('concurrency', concurrency)
   assertPositiveInteger('maxChars', maxChars)
+  assertPositiveInteger('failedBatchSplitSize', failedBatchSplitSize)
   assertNonNegativeInteger('retryAttempts', retryAttempts)
 
   const batches = createBatches(entries, {
@@ -277,6 +289,7 @@ export async function runTranslation({
           translateBatch,
           splitFailedBatches,
           retryAttempts,
+          failedBatchSplitSize,
           (message) => {
             progress.retriedBatches += 1
             progress.recentError = message

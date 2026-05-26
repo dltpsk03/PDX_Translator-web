@@ -35,6 +35,10 @@ describe('buildPrompt', () => {
     )
     expect(prompt).toContain('Keep every localization key unchanged.')
     expect(prompt).toContain('Keep version markers such as :0 unchanged.')
+    expect(prompt).toContain(
+      'Placeholder tokens are immutable. Keep every token such as <P0>, <P1>, and <P2> byte-for-byte unchanged.',
+    )
+    expect(prompt).toContain('Token handling example:')
   })
 
   it('uses the selected source and target languages', () => {
@@ -81,7 +85,10 @@ describe('buildPrompt', () => {
     const prompt = buildPrompt(batch(' tooltip:0 "<P0> gains <P1>\\n#P Good #!"'))
 
     expect(prompt).toContain(
-      'Keep placeholders such as <P0>, <P1>, bracket placeholders, dollar placeholders, icon placeholders, #P ... #!, and #N ... #! unchanged.',
+      'Placeholder tokens are immutable. Keep every token such as <P0>, <P1>, and <P2> byte-for-byte unchanged.',
+    )
+    expect(prompt).toContain(
+      'Never write raw Paradox placeholders such as [Concept(...)], [ROOT.GetName], $COUNTRY$, £gold£, #P ... #!, or #N ... #! unless they already appear unprotected in the input line.',
     )
     expect(prompt).toContain('Keep escaped newline markers \\n unchanged.')
   })
