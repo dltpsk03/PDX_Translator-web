@@ -38,7 +38,7 @@ export type RunTranslationOptions = {
   maxChars?: number
   retryAttempts?: number
   splitFailedBatches?: boolean
-  translateBatch?: (batch: TranslationBatch) => Promise<string>
+  translateBatch?: (batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>
   signal?: AbortSignal
   onProgress?: (progress: TranslationProgress) => void
 }
@@ -80,6 +80,39 @@ function createFailureError(batch: TranslationBatch, message: string): Validatio
   }
 }
 
+function translateWithDefaultProvider(batch: TranslationBatch, retryInstructions?: string[]) {
+  return defaultTranslateBatch(batch, { retryInstructions })
+}
+
+function createRetryInstructions(errors: ValidationError[]) {
+  const instructions = new Set<string>()
+
+  for (const error of errors) {
+    if (error.code === 'untranslated_value') {
+      instructions.add('Translate every quoted source value; do not return the original text unchanged.')
+    } else if (error.code === 'source_value_repeated') {
+      instructions.add('Do not append the original source text after the translated text.')
+    } else if (error.code === 'unparseable_line') {
+      instructions.add('Return only valid Paradox localization lines with quoted values.')
+    } else if (error.code === 'line_count_mismatch' || error.code === 'missing_line') {
+      instructions.add('Return exactly one output line for each input localization line.')
+    } else if (error.code === 'unexpected_line') {
+      instructions.add('Do not add extra lines, comments, explanations, or markdown.')
+    } else if (error.code === 'key_mismatch') {
+      instructions.add('Keep every localization key in the exact original order.')
+    } else if (error.code === 'version_mismatch') {
+      instructions.add('Keep version markers such as :0 unchanged.')
+    } else if (
+      error.code === 'placeholder_missing' ||
+      error.code === 'escaped_newline_missing'
+    ) {
+      instructions.add('Keep every placeholder token such as <P0> and every escaped newline marker unchanged.')
+    }
+  }
+
+  return [...instructions]
+}
+
 function createFailedResults(batch: TranslationBatch, errors: ValidationError[]): TranslatedEntryResult[] {
   return batch.entries.map((batchEntry) => ({
     entry: batchEntry.entry,
@@ -117,9 +150,10 @@ function createSuccessResults(
 
 async function translateAndValidate(
   batch: TranslationBatch,
-  translateBatch: (batch: TranslationBatch) => Promise<string>,
+  translateBatch: (batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>,
+  retryInstructions?: string[],
 ) {
-  const translatedText = await translateBatch(batch)
+  const translatedText = await translateBatch(batch, retryInstructions)
   const validation = validateTranslatedBatch(batch, translatedText)
 
   if (!validation.ok) {
@@ -137,22 +171,24 @@ async function translateAndValidate(
 
 async function processBatch(
   batch: TranslationBatch,
-  translateBatch: (batch: TranslationBatch) => Promise<string>,
+  translateBatch: (batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>,
   allowSplit: boolean,
   retryAttempts: number,
   onRetry?: (message: string) => void,
 ): Promise<TranslatedEntryResult[]> {
   let lastErrors: ValidationError[] = []
+  let retryInstructions: string[] = []
 
   for (let attempt = 0; attempt <= retryAttempts; attempt += 1) {
     try {
-      const result = await translateAndValidate(batch, translateBatch)
+      const result = await translateAndValidate(batch, translateBatch, retryInstructions)
 
       if (result.ok) {
         return result.results
       }
 
       lastErrors = result.errors
+      retryInstructions = createRetryInstructions(lastErrors)
       if (attempt < retryAttempts) {
         onRetry?.(lastErrors[0]?.message ?? 'Validation failed; retrying batch.')
       }
@@ -167,6 +203,7 @@ async function processBatch(
           error instanceof Error ? error.message : 'Translation request failed.',
         ),
       ]
+      retryInstructions = createRetryInstructions(lastErrors)
       if (attempt < retryAttempts) {
         onRetry?.(lastErrors[0]?.message ?? 'Translation request failed; retrying batch.')
       }
@@ -198,7 +235,7 @@ export async function runTranslation({
   maxChars = 12000,
   retryAttempts = 1,
   splitFailedBatches = true,
-  translateBatch = defaultTranslateBatch,
+  translateBatch = translateWithDefaultProvider,
   signal,
   onProgress,
 }: RunTranslationOptions): Promise<RunTranslationResult> {

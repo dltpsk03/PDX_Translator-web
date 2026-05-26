@@ -41,6 +41,7 @@ export type TranslationProvider = {
     batch: TranslationBatch,
     settings: ProviderSettings,
     signal?: AbortSignal,
+    retryInstructions?: string[],
   ) => Promise<string>
   checkConnection: (settings: ProviderSettings) => Promise<ProviderCheckResult>
 }

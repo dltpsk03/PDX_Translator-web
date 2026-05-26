@@ -175,6 +175,65 @@ describe('validateTranslatedBatch', () => {
     ])
   })
 
+  it('reports values that are returned unchanged from the source', () => {
+    const batch = batchFrom(' title:0 "A Dangerous Proposal"')
+
+    const result = validateTranslatedBatch(batch, ' title:0 "A Dangerous Proposal"')
+
+    expect(result.errors).toEqual([
+      {
+        code: 'untranslated_value',
+        batchIndex: 0,
+        lineIndex: 0,
+        globalIndex: 0,
+        resultLineIndex: 0,
+        message: 'Line 1 still matches the original source text.',
+      },
+    ])
+  })
+
+  it('reports translated values that append the original source text', () => {
+    const batch = batchFrom(
+      ' stts_movement.19.f:0 "We must smother the internal and external enemies."',
+    )
+
+    const result = validateTranslatedBatch(
+      batch,
+      ' stts_movement.19.f:0 "Translated text. We must smother the internal and external enemies."',
+    )
+
+    expect(result.errors).toEqual([
+      {
+        code: 'source_value_repeated',
+        batchIndex: 0,
+        lineIndex: 0,
+        globalIndex: 0,
+        resultLineIndex: 0,
+        message: 'Line 1 includes the original source text after the translation.',
+      },
+    ])
+  })
+
+  it('checks unchanged text inside unescaped inner quotes', () => {
+    const batch = batchFrom(' boardroom_schism.5.f: ""For years, we claimed.""')
+
+    const result = validateTranslatedBatch(
+      batch,
+      ' boardroom_schism.5.f: ""For years, we claimed.""',
+    )
+
+    expect(result.errors).toEqual([
+      {
+        code: 'untranslated_value',
+        batchIndex: 0,
+        lineIndex: 0,
+        globalIndex: 0,
+        resultLineIndex: 0,
+        message: 'Line 1 still matches the original source text.',
+      },
+    ])
+  })
+
   it('supports entries without numeric versions', () => {
     const batch = batchFrom(' je_arab_spring: "The Arab Spring"')
 

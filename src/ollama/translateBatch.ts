@@ -17,6 +17,7 @@ export type TranslateBatchOptions = {
   targetLanguage?: ParadoxLanguageCode
   customInstructions?: string
   glossaryEntries?: GlossaryEntry[]
+  retryInstructions?: string[]
   signal?: AbortSignal
 }
 
@@ -42,6 +43,7 @@ export async function translateBatch(
     targetLanguage = 'l_korean',
     customInstructions = '',
     glossaryEntries = [],
+    retryInstructions = [],
     signal,
   }: TranslateBatchOptions = {},
 ) {
@@ -60,6 +62,7 @@ export async function translateBatch(
         targetLanguage,
         customInstructions,
         glossaryEntries,
+        retryInstructions,
       }),
       stream: false,
       think: false,

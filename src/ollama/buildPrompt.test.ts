@@ -27,6 +27,12 @@ describe('buildPrompt', () => {
 
     expect(prompt).toContain('from English into Korean')
     expect(prompt).toContain('Translate only the quoted text from English into Korean.')
+    expect(prompt).toContain(
+      'If the quoted text itself contains quote characters, translated text inside those inner quotes too.',
+    )
+    expect(prompt).toContain(
+      'Do not append, repeat, or preserve the original source sentence after the translation.',
+    )
     expect(prompt).toContain('Keep every localization key unchanged.')
     expect(prompt).toContain('Keep version markers such as :0 unchanged.')
   })
@@ -87,5 +93,16 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Do not add explanations.')
     expect(prompt).toContain('Do not use markdown.')
     expect(prompt).toContain('Return only translated localization lines.')
+  })
+
+  it('adds retry correction instructions when provided', () => {
+    const prompt = buildPrompt(batch(' key:0 "Value"'), {
+      retryInstructions: ['Do not append the original source text after the translated text.'],
+    })
+
+    expect(prompt).toContain('Retry correction:')
+    expect(prompt).toContain(
+      '- Do not append the original source text after the translated text.',
+    )
   })
 })

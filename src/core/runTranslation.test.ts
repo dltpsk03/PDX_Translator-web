@@ -44,7 +44,7 @@ describe('runTranslation', () => {
         await new Promise((resolve) => setTimeout(resolve, 5))
         activeRequests -= 1
 
-        return batch.promptText
+        return batch.promptText.replaceAll('Value', 'Translated')
       },
     })
 
@@ -54,7 +54,7 @@ describe('runTranslation', () => {
   it('retries the same batch once after a failed request', async () => {
     const entries = entriesFrom(' title:0 "Title"')
     const translateBatch = vi
-      .fn<(batch: TranslationBatch) => Promise<string>>()
+      .fn<(batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>>()
       .mockRejectedValueOnce(new Error('network failure'))
       .mockResolvedValueOnce(' title:0 "제목"')
 
@@ -66,6 +66,26 @@ describe('runTranslation', () => {
     expect(translateBatch).toHaveBeenCalledTimes(2)
     expect(result.failedEntries).toEqual([])
     expect(result.results[0].outputLine).toBe(' title:0 "제목"')
+  })
+
+  it('passes validation failure instructions into the retry prompt', async () => {
+    const entries = entriesFrom(' title:0 "A Dangerous Proposal"')
+    const translateBatch = vi
+      .fn<(batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>>()
+      .mockResolvedValueOnce(' title:0 "A Dangerous Proposal"')
+      .mockResolvedValueOnce(' title:0 "Translated proposal"')
+
+    const result = await runTranslation({
+      entries,
+      translateBatch,
+    })
+
+    expect(translateBatch).toHaveBeenNthCalledWith(1, expect.anything(), [])
+    expect(translateBatch).toHaveBeenNthCalledWith(2, expect.anything(), [
+      'Translate every quoted source value; do not return the original text unchanged.',
+    ])
+    expect(result.failedEntries).toEqual([])
+    expect(result.results[0].outputLine).toBe(' title:0 "Translated proposal"')
   })
 
   it('splits a failed batch in half and retries split batches', async () => {
@@ -121,7 +141,8 @@ describe('runTranslation', () => {
       entries,
       batchSize: 1,
       concurrency: 1,
-      translateBatch: async (batch) => batch.promptText,
+      translateBatch: async (batch) =>
+        batch.promptText.replaceAll('One', 'Translated one').replaceAll('Two', 'Translated two'),
       onProgress: progress,
     })
 

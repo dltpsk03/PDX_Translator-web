@@ -10,6 +10,8 @@ export type ValidationErrorCode =
   | 'version_mismatch'
   | 'placeholder_missing'
   | 'escaped_newline_missing'
+  | 'untranslated_value'
+  | 'source_value_repeated'
 
 export type ValidationError = {
   code: ValidationErrorCode
@@ -41,6 +43,16 @@ function createEntryError(
     resultLineIndex: entryIndex,
     message,
   }
+}
+
+function normalizeComparableValue(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function isMeaningfulSourceValue(value: string) {
+  const normalized = normalizeComparableValue(value)
+
+  return normalized.length >= 4 && /[\p{L}\p{N}]/u.test(normalized)
 }
 
 export function validateTranslatedBatch(
@@ -115,6 +127,31 @@ export function validateTranslatedBatch(
             index,
             code,
             `Line ${index + 1} is missing placeholder ${placeholder.token} (${placeholder.value}).`,
+          ),
+        )
+      }
+    }
+
+    const originalValue = normalizeComparableValue(batch.entries[index].protectedValue)
+    const translatedValue = normalizeComparableValue(translatedLine.value)
+
+    if (isMeaningfulSourceValue(originalValue)) {
+      if (translatedValue === originalValue) {
+        errors.push(
+          createEntryError(
+            batch,
+            index,
+            'untranslated_value',
+            `Line ${index + 1} still matches the original source text.`,
+          ),
+        )
+      } else if (translatedValue.length > originalValue.length && translatedValue.includes(originalValue)) {
+        errors.push(
+          createEntryError(
+            batch,
+            index,
+            'source_value_repeated',
+            `Line ${index + 1} includes the original source text after the translation.`,
           ),
         )
       }

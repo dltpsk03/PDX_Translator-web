@@ -1,6 +1,6 @@
 import type { LocalizationEntry, ParsedLine, RawLine } from '../types/paradox'
 
-const localizationLinePattern = /^(\s*)([^\s:#][^:\s]*):(\d*)(\s*)"((?:\\.|[^"\\])*)"(.*)$/
+const localizationLinePattern = /^(\s*)([^\s:#][^:\s]*):(\d*)(\s*)"((?:\\.|[^\\])*)"(.*)$/
 
 export type ParseParadoxYmlOptions = {
   fileName: string

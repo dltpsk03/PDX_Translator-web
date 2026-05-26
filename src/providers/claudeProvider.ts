@@ -117,13 +117,14 @@ export const claudeProvider: TranslationProvider = {
       }
     }
   },
-  translateBatch(batch, settings, signal) {
+  translateBatch(batch, settings, signal, retryInstructions) {
     return createClaudeMessage(
       buildPrompt(batch, {
         sourceLanguage: settings.sourceLanguage,
         targetLanguage: settings.targetLanguage,
         customInstructions: settings.customInstructions,
         glossaryEntries: settings.glossaryEntries,
+        retryInstructions,
       }),
       settings,
       signal,

@@ -67,6 +67,20 @@ describe('parseParadoxYml', () => {
     })
   })
 
+  it('keeps unescaped inner quotes as part of the localization value', () => {
+    const [entry] = parseParadoxYml(' boardroom_schism.5.f: ""For years, we claimed.""', {
+      fileName: 'quotes.yml',
+    })
+
+    expect(entry).toMatchObject({
+      type: 'entry',
+      key: 'boardroom_schism.5.f',
+      version: '',
+      value: '"For years, we claimed."',
+      suffix: '"',
+    })
+  })
+
   it('keeps trailing text after the closing quote in the suffix', () => {
     const [entry] = parseParadoxYml(' key:0 "Value" # translator note', {
       fileName: 'suffix.yml',

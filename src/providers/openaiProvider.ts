@@ -93,13 +93,14 @@ export const openaiProvider: TranslationProvider = {
       }
     }
   },
-  translateBatch(batch, settings, signal) {
+  translateBatch(batch, settings, signal, retryInstructions) {
     return createOpenAIResponse(
       buildPrompt(batch, {
         sourceLanguage: settings.sourceLanguage,
         targetLanguage: settings.targetLanguage,
         customInstructions: settings.customInstructions,
         glossaryEntries: settings.glossaryEntries,
+        retryInstructions,
       }),
       settings,
       signal,

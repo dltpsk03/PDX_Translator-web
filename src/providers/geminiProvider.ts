@@ -84,7 +84,7 @@ export const geminiProvider: TranslationProvider = {
       }
     }
   },
-  async translateBatch(batch, settings, signal) {
+  async translateBatch(batch, settings, signal, retryInstructions) {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
         settings.model,
@@ -106,6 +106,7 @@ export const geminiProvider: TranslationProvider = {
                     targetLanguage: settings.targetLanguage,
                     customInstructions: settings.customInstructions,
                     glossaryEntries: settings.glossaryEntries,
+                    retryInstructions,
                   }),
                 },
               ],

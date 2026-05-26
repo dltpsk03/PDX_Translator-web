@@ -10,6 +10,7 @@ export type BuildPromptOptions = {
   targetLanguage?: ParadoxLanguageCode
   customInstructions?: string
   glossaryEntries?: GlossaryEntry[]
+  retryInstructions?: string[]
 }
 
 export function buildPrompt(
@@ -19,6 +20,7 @@ export function buildPrompt(
     targetLanguage = 'l_korean',
     customInstructions = '',
     glossaryEntries = [],
+    retryInstructions = [],
   }: BuildPromptOptions = {},
 ) {
   const sourceLanguageName = getParadoxLanguageName(sourceLanguage)
@@ -29,6 +31,8 @@ export function buildPrompt(
     '',
     'Core rules:',
     `- Translate only the quoted text from ${sourceLanguageName} into ${targetLanguageName}.`,
+    '- If the quoted text itself contains quote characters, translated text inside those inner quotes too.',
+    '- Do not append, repeat, or preserve the original source sentence after the translation.',
     '- Keep every localization key unchanged.',
     '- Keep version markers such as :0 unchanged.',
     '- Keep the exact same number of lines.',
@@ -57,6 +61,15 @@ export function buildPrompt(
       'User style instructions:',
       'Apply these instructions only if they do not conflict with the core rules.',
       trimmedCustomInstructions,
+    )
+  }
+
+  if (retryInstructions.length > 0) {
+    promptSections.push(
+      '',
+      'Retry correction:',
+      'The previous output failed validation. Fix these issues in the new output:',
+      ...retryInstructions.map((instruction) => `- ${instruction}`),
     )
   }
 

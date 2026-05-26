@@ -970,8 +970,13 @@ function App() {
         retryAttempts: normalizedRetryAttempts,
         splitFailedBatches,
         signal: abortController.signal,
-      translateBatch: (batch) =>
-        selectedProvider.translateBatch(batch, providerSettings, abortController.signal),
+      translateBatch: (batch, retryInstructions) =>
+        selectedProvider.translateBatch(
+          batch,
+          providerSettings,
+          abortController.signal,
+          retryInstructions,
+        ),
       onProgress: setTranslationProgress,
     })
 
