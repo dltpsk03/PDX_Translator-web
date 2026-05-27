@@ -27,6 +27,33 @@ describe('runTranslation', () => {
     })
   })
 
+  it('restores Concept placeholders exactly after translating protected tokens', async () => {
+    const entries = entriesFrom(
+      ` identity_corporate_hegemony_desc: "This Identity values industrial and economic consolidation among its Bloc Members, treating sovereign [Concept('concept_country','$concept_countries$')] as corporate subsidiaries."`,
+    )
+    const translateBatch = vi.fn<
+      (batch: TranslationBatch, retryInstructions?: string[]) => Promise<string>
+    >(async () =>
+      ` identity_corporate_hegemony_desc: "이 정체성은 블록 구성원들 사이의 산업적, 경제적 통합을 중시하며, 주권적인 <P0>을 기업 자회사로 취급합니다."`,
+    )
+
+    const result = await runTranslation({
+      entries,
+      translateBatch,
+    })
+
+    expect(translateBatch).toHaveBeenCalled()
+    const firstBatch = translateBatch.mock.calls[0]?.[0]
+
+    expect(firstBatch?.entries[0].placeholders).toEqual([
+      { token: '<P0>', value: "[Concept('concept_country','$concept_countries$')]" },
+    ])
+    expect(result.failedEntries).toEqual([])
+    expect(result.results[0].outputLine).toBe(
+      ` identity_corporate_hegemony_desc: "이 정체성은 블록 구성원들 사이의 산업적, 경제적 통합을 중시하며, 주권적인 [Concept('concept_country','$concept_countries$')]을 기업 자회사로 취급합니다."`,
+    )
+  })
+
   it('limits concurrent Ollama requests with a promise pool', async () => {
     const entries = entriesFrom(
       Array.from({ length: 6 }, (_, index) => ` key_${index}:0 "Value ${index}"`).join('\n'),
@@ -156,6 +183,26 @@ describe('runTranslation', () => {
       ' second:0 "Two"',
     ])
     expect(result.results.every((entry) => entry.failed)).toBe(true)
+  })
+
+  it('does not translate source entries with malformed Concept placeholders', async () => {
+    const entries = entriesFrom(
+      ` identity_corporate_hegemony_desc: "이 정체성은 블록 구성원들 사이의 산업적, 경제적 통합을 중시하며, 주권적인 [Concept('concept_country','$concept_countries을 기업 자회사로 취급합니다.)]을 기업 자회사로 취급합니다."`,
+    )
+    const translateBatch = vi.fn(async (batch: TranslationBatch) => batch.promptText)
+
+    const result = await runTranslation({
+      entries,
+      translateBatch,
+    })
+
+    expect(translateBatch).not.toHaveBeenCalled()
+    expect(result.failedEntries).toHaveLength(1)
+    expect(result.results[0].outputLine).toBe(entries[0].rawLine)
+    expect(result.results[0].errors.map((error) => error.code)).toEqual([
+      'malformed_placeholder',
+      'malformed_placeholder',
+    ])
   })
 
   it('reports progress as top-level batches complete', async () => {

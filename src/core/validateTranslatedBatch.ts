@@ -1,5 +1,8 @@
 import type { TranslationBatch } from './createBatches'
-import { findParadoxPlaceholderText } from './paradoxPlaceholders'
+import {
+  findMalformedParadoxPlaceholderText,
+  findParadoxPlaceholderText,
+} from './paradoxPlaceholders'
 import { parseParadoxYml } from './parseParadoxYml'
 
 export type ValidationErrorCode =
@@ -13,6 +16,7 @@ export type ValidationErrorCode =
   | 'placeholder_count_mismatch'
   | 'unknown_placeholder_token'
   | 'raw_placeholder_leaked'
+  | 'malformed_placeholder'
   | 'escaped_newline_missing'
   | 'untranslated_value'
   | 'source_value_repeated'
@@ -186,6 +190,17 @@ export function validateTranslatedBatch(
           index,
           'raw_placeholder_leaked',
           `Line ${index + 1} contains raw placeholder text instead of protected tokens: ${placeholder}.`,
+        ),
+      )
+    }
+
+    for (const placeholder of findMalformedParadoxPlaceholderText(translatedLine.value)) {
+      errors.push(
+        createEntryError(
+          batch,
+          index,
+          'malformed_placeholder',
+          `Line ${index + 1} contains malformed placeholder text: ${placeholder.text} (${placeholder.reason}).`,
         ),
       )
     }

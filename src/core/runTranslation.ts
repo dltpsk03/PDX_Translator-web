@@ -9,6 +9,7 @@ import {
   validateTranslatedBatch,
   type ValidationError,
 } from './validateTranslatedBatch'
+import { findMalformedParadoxPlaceholderText } from './paradoxPlaceholders'
 import { translateBatch as defaultTranslateBatch } from '../ollama/translateBatch'
 import type { LocalizationEntry } from '../types/paradox'
 
@@ -118,6 +119,7 @@ function createRetryInstructions(errors: ValidationError[]) {
       error.code === 'placeholder_count_mismatch' ||
       error.code === 'unknown_placeholder_token' ||
       error.code === 'raw_placeholder_leaked' ||
+      error.code === 'malformed_placeholder' ||
       error.code === 'escaped_newline_missing'
     ) {
       instructions.add(
@@ -169,6 +171,33 @@ function createFailedResults(batch: TranslationBatch, errors: ValidationError[])
     failed: true,
     errors,
   }))
+}
+
+function createMalformedSourceResults(entries: LocalizationEntry[]): TranslatedEntryResult[] {
+  return entries.flatMap((entry) => {
+    const placeholders = findMalformedParadoxPlaceholderText(entry.value)
+
+    if (placeholders.length === 0) {
+      return []
+    }
+
+    return [
+      {
+      entry,
+      translatedValue: entry.value,
+      outputLine: entry.rawLine,
+      failed: true,
+      errors: placeholders.map((placeholder) => ({
+          code: 'malformed_placeholder' as const,
+          batchIndex: -1,
+          lineIndex: entry.lineIndex,
+          globalIndex: entry.globalIndex,
+          resultLineIndex: 0,
+          message: `Source contains malformed placeholder text: ${placeholder.text} (${placeholder.reason}).`,
+        })),
+      },
+    ]
+  })
 }
 
 function createSuccessResults(
@@ -293,17 +322,25 @@ export async function runTranslation({
   assertPositiveInteger('failedBatchSplitSize', failedBatchSplitSize)
   assertNonNegativeInteger('retryAttempts', retryAttempts)
 
-  const batches = createBatches(entries, {
+  const malformedSourceResults = createMalformedSourceResults(entries)
+  const malformedSourceIndexes = new Set(
+    malformedSourceResults.map((result) => result.entry.globalIndex),
+  )
+  const translatableEntries = entries.filter(
+    (entry) => !malformedSourceIndexes.has(entry.globalIndex),
+  )
+
+  const batches = createBatches(translatableEntries, {
     maxLines: batchSize,
     maxChars,
   })
-  const results: TranslatedEntryResult[] = []
+  const results: TranslatedEntryResult[] = [...malformedSourceResults]
   const progress: TranslationProgress = {
-    completedEntries: 0,
+    completedEntries: malformedSourceResults.length,
     totalEntries: entries.length,
     completedBatches: 0,
     totalBatches: batches.length,
-    failedEntries: 0,
+    failedEntries: malformedSourceResults.length,
     activeBatches: 0,
     retriedBatches: 0,
     recentError: null,

@@ -169,6 +169,15 @@ describe('protectPlaceholders', () => {
     )
   })
 
+  it('restores placeholders containing JavaScript replacement markers literally', () => {
+    const source = "[Concept('concept_country','$concept_countries$')]"
+    const protectedText = protectPlaceholders(source)
+
+    expect(restorePlaceholders('<P0>을 기업 자회사로 취급합니다.', protectedText.placeholders)).toBe(
+      "[Concept('concept_country','$concept_countries$')]을 기업 자회사로 취급합니다.",
+    )
+  })
+
   it('does not alter text when no placeholders are present', () => {
     const result = protectPlaceholders('Plain localization text.')
 

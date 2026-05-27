@@ -235,6 +235,7 @@ describe('validateTranslatedBatch', () => {
 
     expect(result.errors.map((error) => error.code)).toEqual([
       'raw_placeholder_leaked',
+      'malformed_placeholder',
       'raw_placeholder_leaked',
       'raw_placeholder_leaked',
       'placeholder_missing',

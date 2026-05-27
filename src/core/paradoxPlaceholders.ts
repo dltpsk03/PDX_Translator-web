@@ -18,6 +18,11 @@ export type ParadoxPlaceholderMatch = {
   index: number
 }
 
+export type MalformedParadoxPlaceholder = {
+  text: string
+  reason: string
+}
+
 function isAsciiLetter(value: string) {
   return /^[A-Za-z]$/.test(value)
 }
@@ -167,4 +172,43 @@ export function findParadoxPlaceholderText(value: string) {
   return findParadoxPlaceholderMatches(value)
     .map((match) => match.text)
     .filter((placeholder, index, placeholders) => placeholders.indexOf(placeholder) === index)
+}
+
+function countOccurrences(value: string, search: string) {
+  return value.split(search).length - 1
+}
+
+export function findMalformedParadoxPlaceholderText(value: string): MalformedParadoxPlaceholder[] {
+  return findParadoxPlaceholderMatches(value)
+    .map((match) => match.text)
+    .filter((placeholder, index, placeholders) => placeholders.indexOf(placeholder) === index)
+    .flatMap((placeholder) => {
+      if (!placeholder.startsWith('[Concept(')) {
+        return []
+      }
+
+      const errors: MalformedParadoxPlaceholder[] = []
+      if (countOccurrences(placeholder, '$') % 2 !== 0) {
+        errors.push({
+          text: placeholder,
+          reason: 'contains an unbalanced $ placeholder marker',
+        })
+      }
+
+      if (countOccurrences(placeholder, "'") % 2 !== 0) {
+        errors.push({
+          text: placeholder,
+          reason: 'contains unbalanced single quotes',
+        })
+      }
+
+      if (countOccurrences(placeholder, '"') % 2 !== 0) {
+        errors.push({
+          text: placeholder,
+          reason: 'contains unbalanced double quotes',
+        })
+      }
+
+      return errors
+    })
 }
